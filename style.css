@@ -441,3 +441,95 @@ body.evil { animation: evilflash 0.9s ease-out; }
 ::-webkit-scrollbar-track { background: #100d09; }
 ::-webkit-scrollbar-thumb { background: #3a332a; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--amber-dark); }
+
+/* =========================================================================
+ * 双端适配：触屏优化 + 手机端布局
+ * 桌面端样式完全不变；以下仅在触屏设备 / ≤760px 窄屏时生效
+ * ========================================================================= */
+
+/* —— 触屏设备（手机/平板，任意宽度）：点按体验优化 —— */
+@media (pointer: coarse) {
+  * { -webkit-tap-highlight-color: transparent; }   /* 去掉安卓点按灰块 */
+  .btn, .tab, .mem-card, .charm-card, .phone-opt, .drawer-slot {
+    touch-action: manipulation;                     /* 消除双击缩放延迟 */
+  }
+  .btn { padding: 11px 16px; }                      /* 指尖友好：放大点击区 */
+  .btn-mini { padding: 8px 12px; }
+  .tab { padding: 8px 6px; }
+  .phone-opt { padding: 12px; }
+  /* 触屏没有“悬停”：点按后不要一直保持抬起状态 */
+  .mem-card:hover, .charm-card:hover { transform: none; }
+}
+
+/* —— 手机窄屏布局（≤760px）：老虎机 → ATM → 符号板 单列纵排 —— */
+@media (max-width: 760px) {
+  .screen { padding: 10px; min-height: 100dvh; }    /* dvh 修复手机地址栏抖动 */
+  .small { font-size: 12px; }
+
+  /* 标题画面 */
+  .logo-clover { font-size: 44px; }
+  .logo-text { letter-spacing: 0.12em; }            /* 防止 LOGO 溢出小屏 */
+  .logo-sub { letter-spacing: 0.5em; text-indent: 0.5em; }
+  .title-meta { padding: 8px 12px; font-size: 11px; }
+  .title-buttons { gap: 8px; }
+  .title-buttons .btn { padding: 12px 14px; }
+
+  /* 记忆卡选择：卡片改为整行 */
+  .mem-card { width: 100%; max-width: 400px; }
+  .mc-desc { min-height: 0; }
+
+  /* HUD：六格等分一行，“放弃本局”独占下一行 */
+  #hud { padding: 6px 8px; gap: 4px; }
+  .hud-cell { flex: 1 1 0; min-width: 0; padding: 2px 4px; }
+  .hud-num { font-size: 15px; }
+  #btn-menu { width: 100%; margin: 4px 0 0; }
+
+  /* 主布局单列化 */
+  .game-wrap { gap: 8px; }
+  .game-main { grid-template-columns: 1fr; gap: 8px; }
+
+  /* 老虎机：格子收紧、拉杆按钮加高 */
+  .slot-grid { gap: 4px; padding: 6px; }
+  .slot-cell { font-size: 22px; }
+  .spin-info { min-height: 54px; font-size: 12px; }
+  .machine-controls { gap: 8px; }
+  .machine-controls .btn { padding: 14px 10px; }
+  .machine-controls #btn-spin { letter-spacing: 0.2em; }
+
+  /* 符号板 / 图案板 / 日志：列宽收窄防溢出 */
+  .board-list, .feed-list { max-height: 260px; }
+  .feed-list { font-size: 11px; }
+  .sym-row { grid-template-columns: 20px 52px 1fr 40px 54px; gap: 4px; font-size: 11px; }
+  .pat-grid { grid-template-columns: repeat(5, 12px); grid-auto-rows: 12px; }
+  .pat-row { grid-template-columns: 74px 1fr 44px; font-size: 11px; }
+
+  /* 幸运符 / 商店 / 抽屉：卡片两列排布 */
+  .charm-row { gap: 6px; }
+  .charm-card, .store-card { width: calc(50% - 3px); }
+  .drawer-slot { width: calc(50% - 3px); }
+  .cc-trait { font-size: 11px; }
+  .cc-flags { font-size: 10px; }
+  .cc-desc { font-size: 10.5px; max-height: 60px; }
+  .chg-n { font-size: 10px; }
+
+  /* 弹窗：占满宽度，按钮等分 */
+  .modal { padding: 10px; }
+  .modal-box { width: 100%; padding: 14px; }
+  .modal-actions, .phone-actions { flex-wrap: wrap; }
+  .modal-actions .btn, .phone-actions .btn { flex: 1; padding: 11px 8px; }
+  .summary-box .btn { width: 100%; padding: 13px; }
+  .opt-name { font-size: 15px; }
+
+  /* 结局 / 指南 */
+  .end-card { padding: 22px 16px; }
+  .end-text { font-size: 13px; }
+  .end-stats { font-size: 11px; }
+  .guide-card { padding: 16px 14px; font-size: 12px; }
+}
+
+/* —— 超小屏保险（≤360px）：LOGO 与格子再缩一档，确保不溢出 —— */
+@media (max-width: 360px) {
+  .logo-text { font-size: 36px; letter-spacing: 0.1em; }
+  .logo-sub { font-size: 14px; letter-spacing: 0.35em; text-indent: 0.35em; }
+  .slot-cell { font-size: 19px; }
+}
