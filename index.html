@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>四叶草深渊 · CloverPit Fan Game</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="crt-overlay"></div>
+<div class="vignette"></div>
+
+<!-- ==================== 标题画面 ==================== -->
+<section id="screen-title" class="screen">
+  <div class="title-card">
+    <div class="logo-clover">🍀</div>
+    <h1 class="logo-text">CLOVER&nbsp;PIT</h1>
+    <div class="logo-sub">四 叶 草 深 渊</div>
+    <p class="logo-tag">rogue-lite 老虎机噩梦 · 为你的性命下注</p>
+    <div id="title-meta" class="title-meta"></div>
+    <div class="title-buttons">
+      <button id="btn-new-run" class="btn btn-amber">开始新的一局</button>
+      <button id="btn-guide" class="btn">玩法指南</button>
+    </div>
+    <p class="title-foot">致敬 Panik Arcade《CloverPit》的非官方同人复刻</p>
+  </div>
+</section>
+
+<!-- ==================== 记忆卡选择 ==================== -->
+<section id="screen-cards" class="screen hidden">
+  <div class="cards-wrap">
+    <h2 class="panel-title">插入记忆卡</h2>
+    <div id="card-grid" class="card-grid"></div>
+    <button id="btn-cards-back" class="btn">← 返回</button>
+  </div>
+</section>
+
+<!-- ==================== 主游戏 ==================== -->
+<section id="screen-game" class="screen">
+  <div class="game-wrap">
+    <header id="hud">
+      <div class="hud-cell"><span class="hud-label">金币</span><span id="hud-coins" class="hud-num gold">0</span></div>
+      <div class="hud-cell"><span class="hud-label">幸运券</span><span id="hud-tickets" class="hud-num green">0</span></div>
+      <div class="hud-cell"><span class="hud-label">期数</span><span id="hud-deadline" class="hud-num">#1</span></div>
+      <div class="hud-cell"><span class="hud-label">回合</span><span id="hud-round" class="hud-num">0/3</span></div>
+      <div class="hud-cell"><span class="hud-label">旋转</span><span id="hud-spins" class="hud-num amber">—</span></div>
+      <div class="hud-cell"><span class="hud-label">幸运</span><span id="hud-luck" class="hud-num amber">—</span></div>
+      <button id="btn-menu" class="btn btn-mini">放弃本局</button>
+    </header>
+
+    <div class="game-main">
+      <!-- 老虎机 -->
+      <div class="panel machine-panel">
+        <div class="machine-head">
+          <span class="machine-brand">CLOVER PIT</span>
+          <span id="machine-luck" class="machine-luck"></span>
+        </div>
+        <div id="slot-grid" class="slot-grid"></div>
+        <div id="spin-info" class="spin-info"><div class="dim">拉下拉杆，开始旋转……</div></div>
+        <div class="machine-controls">
+          <button id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
+          <button id="btn-red" class="btn btn-red">◉ 红色按钮</button>
+        </div>
+        <div id="round-controls" class="round-controls"></div>
+      </div>
+
+      <!-- ATM -->
+      <div class="panel atm-panel">
+        <div class="atm-head" id="atm-head">DEADLINE #1</div>
+        <div class="atm-screen">
+          <div class="atm-row"><span>债 务</span><span id="atm-debt" class="gold">75</span></div>
+          <div class="atm-row"><span>已存入</span><span id="atm-dep" class="amber">0</span></div>
+          <div class="atm-row"><span>利息/回合</span><span id="atm-int" class="amber">7%</span></div>
+          <div class="atm-bar"><span id="atm-bar-fill"></span></div>
+          <div class="atm-row small dim"><span id="atm-note"></span></div>
+        </div>
+        <div class="atm-buttons">
+          <button class="btn btn-mini dep" data-f="0.25">存25%</button>
+          <button class="btn btn-mini dep" data-f="0.5">存50%</button>
+          <button class="btn btn-mini dep dep-max" data-f="1">全存</button>
+          <button id="btn-end-deadline" class="btn btn-mini btn-warn">结束本期</button>
+        </div>
+        <div id="countdown-banner" class="countdown hidden"></div>
+        <div id="pack-banner" class="pack hidden"></div>
+      </div>
+
+      <!-- 符号/图案/日志 -->
+      <div class="panel boards-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="symbols">符号板</button>
+          <button class="tab" data-tab="patterns">图案板</button>
+          <button class="tab" data-tab="log">日志</button>
+        </div>
+        <div id="tab-symbols" class="tab-body board-list"></div>
+        <div id="tab-patterns" class="tab-body board-list hidden"></div>
+        <div id="tab-log" class="tab-body feed-list hidden"></div>
+      </div>
+    </div>
+
+    <!-- 装备 -->
+    <div class="panel charms-panel">
+      <div class="panel-title-row">
+        <span class="panel-title">幸运符 <span id="charm-count" class="dim"></span></span>
+        <span id="key-controls"></span>
+      </div>
+      <div id="charm-row" class="charm-row"></div>
+    </div>
+
+    <!-- 商店 + 抽屉 -->
+    <div class="game-bottom">
+      <div class="panel store-panel">
+        <div class="panel-title-row">
+          <span class="panel-title">商店</span>
+          <span id="store-info" class="dim small"></span>
+          <button id="btn-restock" class="btn btn-mini">补货</button>
+        </div>
+        <div id="store-row" class="charm-row"></div>
+      </div>
+      <div class="panel drawers-panel">
+        <div class="panel-title-row">
+          <span class="panel-title">抽屉</span>
+          <span id="drawer-info" class="dim small"></span>
+        </div>
+        <div id="drawer-row" class="charm-row"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 电话弹窗 ==================== -->
+<div id="modal-phone" class="modal hidden">
+  <div class="modal-box phone-box">
+    <div id="phone-head" class="phone-head">☎ 电话响了……</div>
+    <div id="phone-greet" class="phone-greet"></div>
+    <div id="phone-options" class="phone-options"></div>
+    <div class="phone-actions">
+      <button id="btn-phone-reroll" class="btn btn-mini"></button>
+      <button id="btn-phone-later" class="btn btn-mini">等会儿再说</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 符文详情 ==================== -->
+<div id="modal-charm" class="modal hidden">
+  <div class="modal-box charm-box">
+    <div id="charm-detail"></div>
+    <div class="modal-actions">
+      <button id="btn-charm-sell" class="btn btn-mini btn-warn">转卖</button>
+      <button id="btn-charm-drawer" class="btn btn-mini">放入抽屉</button>
+      <button id="btn-charm-close" class="btn btn-mini">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 期末结算 ==================== -->
+<div id="modal-summary" class="modal hidden">
+  <div class="modal-box summary-box">
+    <h3 id="summary-title">期限结算</h3>
+    <div id="summary-body"></div>
+    <button id="btn-summary-ok" class="btn btn-amber">继续</button>
+  </div>
+</div>
+
+<!-- ==================== 结局 ==================== -->
+<section id="screen-end" class="screen hidden">
+  <div class="end-card" id="end-card"></div>
+</section>
+
+<!-- ==================== 指南 ==================== -->
+<section id="screen-guide" class="screen hidden">
+  <div class="guide-card" id="guide-card"></div>
+  <button id="btn-guide-back" class="btn btn-amber">← 返回</button>
+</section>
+
+<script src="js/data.js"></script>
+<script src="js/charms.js"></script>
+<script src="js/engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
