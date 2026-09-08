@@ -639,8 +639,11 @@
     const extra = st.flags.extraPatterns || {};
     // 1. 匹配
     const matches = [];
+    // 修复：被 6️⃣ 印上的格子不参与图案判定（旧符号残留曾导致幽灵匹配）
+    const sixSet = st.sixCells && st.sixCells.length ? new Set(st.sixCells) : null;
     for (const inst of CP.PATTERN_INSTANCES) {
       if (inst.extra && !extra[inst.id]) continue;
+      if (sixSet && inst.cells.some((c) => sixSet.has(c))) continue;
       const s0 = board[inst.cells[0]];
       if (!s0 || s0 === "six") continue;
       let ok = true;
@@ -1109,6 +1112,25 @@
     fx(st, "rerollPhone", {});
     E.rollPhoneOptions(st);
     return { ok: true, cost };
+  };
+
+  /* 挂断电话：普通来电稍后再说；红色来电 = 拒绝，累计 3 次开启神圣之路 */
+  E.deferPhone = function (st) {
+    if (!st.phone.pending) return null;
+    const red = st.phone.options.some((id) => {
+      const c = CP.PHONE_CALL_BY_ID[id];
+      return c && c.type === "red";
+    });
+    if (red && !st.redTaken) {
+      st.sacredRejections += 1;
+      st.phone.pending = false;
+      st.phone.options = [];
+      E.addFeed(st, "你挂断了阴冷的电流声……（拒绝红色来电 " + st.sacredRejections + "/3）", "holy");
+      if (st.sacredRejections >= 3) E.addFeed(st, "一种温暖的力量开始注视着你——神圣之路已开。", "holy");
+      return st.sacredRejections;
+    }
+    E.addFeed(st, "电话先放到一边……");
+    return 0;
   };
 
   E.pickPhoneCall = function (st, idx) {

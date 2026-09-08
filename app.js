@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
 
   const SYM_EMOJI = { lemon: "🍋", cherry: "🍒", clover: "🍀", bell: "🔔", diamond: "💎", treasure: "🧰", seven: "7️⃣" };
-  const RARITY_ZH = { Common: "普通", Uncommon: "罕见", Rare: "稀有", Legendary: "传说" };
+  const RARITY_ZH = { Common: "普通", Uncommon: "罕见", Rare: "稀有", Epic: "史诗", Legendary: "传说" };
   const SCREENS = ["screen-title", "screen-cards", "screen-game", "screen-end", "screen-guide"];
 
   /* ---------------- 简易 WebAudio 音效 ---------------- */
@@ -75,6 +75,8 @@
       if (!m.stats) m.stats = {};
       if (typeof m.drawersUnlocked !== "number") m.drawersUnlocked = 0;
       m.corpseCarry = m.corpseCarry || null;
+      if (!m.seen) m.seen = [];
+      m.seen = [...new Set(m.seen)].filter((id) => CP.CHARMS[id]);
       this.meta = m;
     },
 
@@ -87,6 +89,13 @@
       $("btn-cards-back").onclick = () => this.showScreen("screen-title");
       $("btn-guide").onclick = () => { this.renderGuide(); this.showScreen("screen-guide"); };
       $("btn-guide-back").onclick = () => this.showScreen("screen-title");
+      $("btn-codex").onclick = () => this.openCodex("charms");
+      $("btn-codex-game").onclick = () => this.openCodex("charms");
+      $("btn-codex-close").onclick = () => $("modal-codex").classList.add("hidden");
+      document.querySelectorAll("[data-codex]").forEach((t) => {
+        t.onclick = () => this.switchCodexTab(t.dataset.codex);
+      });
+      CP.Fx.bindGlobal();
       $("btn-spin").onclick = () => this.doSpin();
       $("btn-red").onclick = () => this.doRedButton();
       $("btn-restock").onclick = () => this.doRestock();
@@ -101,7 +110,7 @@
         t.onclick = () => this.switchTab(t.dataset.tab);
       });
       $("btn-phone-reroll").onclick = () => this.rerollPhone();
-      $("btn-phone-later").onclick = () => this.closePhone();
+      $("btn-phone-later").onclick = () => this.deferPhone();
       $("btn-charm-close").onclick = () => $("modal-charm").classList.add("hidden");
       $("btn-charm-sell").onclick = () => this.sellSelected();
       $("btn-charm-drawer").onclick = () => this.drawerSelected();
@@ -119,6 +128,8 @@
 
     showScreen(id) {
       SCREENS.forEach((s) => $(s).classList.toggle("hidden", s !== id));
+      CP.Fx.screen(id);
+      if (id === "screen-title") CP.Fx.titleIntro();
     },
 
     switchTab(name) {
@@ -135,6 +146,7 @@
         "🍀 已解锁符文 " + m.unlocked.length + " / " + total,
         "🃏 记忆卡 " + m.cards.length + " / " + CP.MEMORY_CARDS.length,
         "🗄 抽屉 " + m.drawersUnlocked + " / 4",
+        "📖 图鉴已收录 " + (m.seen ? m.seen.length : 0) + " / " + total,
       ].join("<br>");
     },
 
@@ -154,6 +166,7 @@
         grid.appendChild(div);
       }
       this.showScreen("screen-cards");
+      CP.Fx.cards();
     },
 
     startRun(cardId) {
@@ -164,6 +177,7 @@
       this.selCharmUid = null;
       this._shapes = null;
       this.showScreen("screen-game");
+      this.markSeenCharms();
       $("spin-info").innerHTML = '<div class="dim">拉下拉杆，开始旋转……</div>';
       this.feed("—— 第 1 期 · 债务 " + CP.fmt(this.st.debt) + " 金币 ——", "warn");
       this.renderAll();
@@ -174,6 +188,7 @@
     renderAll() {
       const st = this.st;
       if (!st) return;
+      this.markSeenCharms();
       this.renderHud();
       this.renderBoard();
       this.renderAtm();
@@ -246,15 +261,15 @@
         if (st.phone.pending) html += '<button id="btn-phone" class="btn btn-mini btn-amber">☎ 接听电话</button>';
         const baseSpins = st.cardId === "screen" ? 21 : 7;
         if (st.coins <= 0) {
-          html += '<button id="btn-mode-most" class="btn btn-amber">免费回合（' + baseSpins + ' 旋转 · 仅 1 券）</button>';
+          html += '<button id="btn-mode-most" class="btn btn-amber" title="身无分文时的救济：仍可旋转，但图案不计酬，回合结算仅 +1 券">免费回合 · ' + baseSpins + ' 次旋转（图案不计酬 · 仅 +1 券）</button>';
         } else if (st.coins < st.leverCost) {
           const per = st.leverCost / baseSpins;
           const n = Math.max(1, Math.floor(st.coins / per));
-          html += '<button id="btn-mode-most" class="btn btn-amber">欠转（约 ' + n + " 次）</button>";
+          html += '<button id="btn-mode-most" class="btn btn-amber" title="金币不够一整轮：按比例折算旋转次数，花费身上全部金币">欠转 · 约 ' + n + " 次（花费身上全部 " + CP.fmt(st.coins) + " 金币）</button>";
         } else {
           const n = st.cardId === "fixation" ? 1 : st.cardId === "screen" ? 21 : 7;
-          html += '<button id="btn-mode-most" class="btn btn-amber">多旋转 · ' + n + " 次（" + CP.fmt(st.leverCost) + " 金币）</button>";
-          html += '<button id="btn-mode-fewer" class="btn">少旋转 · 3 次（券×3）</button>';
+          html += '<button id="btn-mode-most" class="btn btn-amber">多旋转 · ' + n + " 次（花费 " + CP.fmt(st.leverCost) + " 金币）</button>";
+          html += '<button id="btn-mode-fewer" class="btn" title="同样的拉杆费用，旋转次数更少，但回合结算时 +3 幸运券">少旋转 · 3 次（花费 ' + CP.fmt(st.leverCost) + " 金币 · 结算 +3 券）</button>";
         }
       } else if (st.phase === "spinning") {
         html += '<span class="spin-count">旋转 ' + st.spinsLeft + " / " + st.spinsPerRound + "</span>";
@@ -470,6 +485,8 @@
       $("btn-red").disabled = true;
       const ids = CP.SYMBOLS.map((s) => s.id);
       const grid = $("slot-grid");
+      CP.Fx.lever();
+      Sfx.spin();
       let frames = 7;
       const tick = () => {
         if (frames-- > 0) {
@@ -479,6 +496,7 @@
             cells[i].textContent = SYM_EMOJI[ids[Math.floor(Math.random() * ids.length)]];
             cells[i].className = "slot-cell";
           }
+          CP.Fx.spinTick(cells);
           setTimeout(tick, 55);
         } else {
           const res = E.spin(st);
@@ -495,7 +513,11 @@
       this.lastSpin = res;
       let html = "";
       if (res.scored.length) {
-        html += '<div class="payout">+' + CP.fmt(res.payout) + " 金币</div>";
+        if (st.freeRound) {
+          html += '<div class="payout dim">免费回合 · 图案不计酬</div>';
+        } else {
+          html += '<div class="payout">+' + CP.fmt(res.payout) + " 金币</div>";
+        }
         html += '<div class="patterns-line">' + res.scored.map((r) => r.name + "×" + r.triggers).join(" · ") + "</div>";
         if (res.jackpot) {
           html += '<div class="jackpot-text">★ 大 满 贯 ★</div>';
@@ -518,19 +540,27 @@
           Sfx.holy();
         } else {
           html += '<div class="six-text">' + res.six.kind +
-            (res.six.penalty ? " · 失去 " + CP.fmt(res.six.penalty.removed) + " 金币" : "") + "</div>";
+            (res.six.penalty ? " · 没收 " + CP.fmt(res.six.penalty.removed) + " 金币" : "") + "</div>";
+          if (res.six.penalty && res.payout > 0 && !st.freeRound) {
+            const net = res.payout - res.six.penalty.removed;
+            html += '<div class="patterns-line">📉 本转合计：图案 +' + CP.fmt(res.payout) +
+              "，666 没收 −" + CP.fmt(res.six.penalty.removed) + " → 净 " + (net >= 0 ? "+" : "") + CP.fmt(net) + " 金币</div>";
+          }
         }
       }
       for (const e of res.events || []) {
         if (e && e.text) this.feed(e.text, "charm");
       }
       $("spin-info").innerHTML = html;
+      CP.Fx.spinResult(res, $("slot-grid"), $("spin-info"));
+      CP.Fx.hudPop("hud-coins");
     },
 
     doRedButton() {
       const st = this.st;
       if (!st || st.phase !== "spinning" || this.spinning) return;
       const r = E.redButton(st);
+      CP.Fx.redButton();
       for (const e of r.events || []) if (e && e.text) this.feed(e.text, "charm");
       if (r.triggered.length) {
         Sfx.spin();
@@ -545,6 +575,8 @@
       if (!r) return;
       this.feed("回合结束：利息 +" + CP.fmt(r.interest) + " 金币，+" + r.tickets + " 券", "good");
       Sfx.coin();
+      CP.Fx.hudPop("hud-tickets");
+      CP.Fx.hudPop("hud-coins");
       for (const e of r.events || []) if (e && e.text) this.feed(e.text, "charm");
       if (st.deathCountdown) {
         const c = E.countdownRoundDone(st);
@@ -588,6 +620,7 @@
       $("summary-title").textContent = "第 " + (st.deadline - 1) + " 期已偿还";
       $("summary-body").innerHTML = rows.map((r) => '<div class="sum-row">' + r + "</div>").join("");
       $("modal-summary").classList.remove("hidden");
+      CP.Fx.modal("modal-summary");
       Sfx.coin();
       this.renderAll();
     },
@@ -603,6 +636,8 @@
       if (got > 0) {
         this.feed("存入 " + CP.fmt(got) + " 金币（累计 " + CP.fmt(st.deposited) + " / " + CP.fmt(st.debt) + "）");
         Sfx.coin();
+        CP.Fx.deposit();
+        CP.Fx.hudPop("hud-coins");
       }
       if (wasCd && !st.deathCountdown) this.showDeadlineSummary();
       this.renderAll();
@@ -614,6 +649,8 @@
       const r = E.restockStore(st, st.freeRestocks > 0);
       if (!r.ok) this.feed("金币不够补货……", "warn");
       this.renderAll();
+      this.markSeenCharms();
+      CP.Fx.rowIn($("store-row"));
     },
 
     buySlot(i) {
@@ -623,6 +660,8 @@
       if (r.ok) {
         this.feed("购买了 " + CP.CHARMS[r.charm.id].name + "（" + r.price + " 券）", "good");
         Sfx.coin();
+        this.markSeenCharms();
+        CP.Fx.pop($("charm-row").lastElementChild);
       } else if (r.reason === "tickets") this.feed("幸运券不够……", "warn");
       else if (r.reason === "space") this.feed("符文容量已满！先转卖或收进抽屉吧", "warn");
       this.renderAll();
@@ -648,6 +687,7 @@
       $("btn-charm-sell").disabled = !!def.cadaver;
       $("btn-charm-drawer").disabled = !st.drawers.some((x, i) => i < st.drawersUnlocked && !x);
       $("modal-charm").classList.remove("hidden");
+      CP.Fx.modal("modal-charm");
     },
 
     sellSelected() {
@@ -708,8 +748,11 @@
         div.onclick = () => this.pickCall(i);
         box.appendChild(div);
       });
+      $("btn-phone-later").textContent = type === "red" ? "✖ 挂断（拒绝红色来电）" : "等会儿再说";
       this.renderRerollBtn();
       $("modal-phone").classList.remove("hidden");
+      CP.Fx.callFlash(type);
+      CP.Fx.modal("modal-phone");
     },
 
     renderRerollBtn() {
@@ -727,6 +770,7 @@
       this.feed("☎ " + c.name + " → " + c.desc, c.type === "red" ? "evil" : c.type === "sacred" ? "holy" : "charm");
       if (c.type === "sacred") Sfx.holy();
       else if (c.type === "red") Sfx.evil();
+      CP.Fx.callFlash(c.type);
       this.closePhone();
       this.renderAll();
     },
@@ -740,8 +784,88 @@
       }
     },
 
+    deferPhone() {
+      const st = this.st;
+      if (st && E.deferPhone(st)) this.renderAll();
+      this.closePhone();
+    },
+
     closePhone() {
       $("modal-phone").classList.add("hidden");
+    },
+
+    /* ==================== 道具图鉴 ==================== */
+    markSeenCharms() {
+      const m = this.meta;
+      if (!m.seen) m.seen = [];
+      const set = new Set(m.seen);
+      let changed = false;
+      const add = (id) => { if (id && CP.CHARMS[id] && !set.has(id)) { set.add(id); changed = true; } };
+      if (this.st) {
+        for (const c of this.st.charms) add(c.id);
+        for (const d of this.st.drawers) if (d) add(d.id);
+        for (const e of this.st.store) add(e.id);
+      }
+      if (changed) { m.seen = [...set]; this.saveMeta(); }
+      return changed;
+    },
+
+    openCodex(tab) {
+      this.renderCodex();
+      $("modal-codex").classList.remove("hidden");
+      this.switchCodexTab(tab || "charms");
+      CP.Fx.modal("modal-codex");
+    },
+
+    switchCodexTab(name) {
+      document.querySelectorAll("[data-codex]").forEach((t) => t.classList.toggle("active", t.dataset.codex === name));
+      $("codex-charms").classList.toggle("hidden", name !== "charms");
+      $("codex-cards").classList.toggle("hidden", name !== "cards");
+      CP.Fx.codex($(name === "cards" ? "codex-cards" : "codex-charms"));
+    },
+
+    renderCodex() {
+      this.markSeenCharms();
+      const seen = new Set(this.meta.seen || []);
+      const RANK = { Common: 0, Uncommon: 1, Rare: 2, Epic: 3, Legendary: 4 };
+      const ids = Object.keys(CP.CHARMS).sort((a, b) => {
+        const da = CP.CHARMS[a], db = CP.CHARMS[b];
+        return (RANK[da.rarity] || 0) - (RANK[db.rarity] || 0) || da.name.localeCompare(db.name, "zh");
+      });
+      let got = 0;
+      $("codex-charms").innerHTML = ids.map((id) => {
+        const d = CP.CHARMS[id];
+        if (seen.has(id)) {
+          got++;
+          const tags = [];
+          if (d.button) tags.push("⚡红按钮充能");
+          if (d.noSpace) tags.push("不占容量");
+          if (d.trigger === "random") tags.push("随机触发");
+          return '<div class="codex-item r-' + d.rarity + '">' +
+            '<div class="cx-name">' + d.name + "</div>" +
+            '<div class="cx-sub">' + (RARITY_ZH[d.rarity] || d.rarity) + " · " + d.cost + " 券" +
+            (tags.length ? " · " + tags.join("·") : "") + "</div>" +
+            '<div class="cx-desc">' + d.desc + "</div></div>";
+        }
+        return '<div class="codex-item locked">' +
+          '<div class="cx-name">？？？</div>' +
+          '<div class="cx-sub">' + (RARITY_ZH[d.rarity] || d.rarity) + "</div>" +
+          '<div class="cx-desc">尚未遇到——在商店、电话或抽屉中遇见它才会解锁</div></div>';
+      }).join("");
+      const owned = new Set(this.meta.cards || []);
+      $("codex-cards").innerHTML = CP.MEMORY_CARDS.map((c) =>
+        owned.has(c.id)
+          ? '<div class="codex-item r-' + c.rarity + '">' +
+            '<div class="cx-name">' + c.name + "</div>" +
+            '<div class="cx-sub">' + (RARITY_ZH[c.rarity] || c.rarity) + "</div>" +
+            '<div class="cx-desc">' + c.desc + "</div>" +
+            (c.dialogue ? '<div class="cx-dlg">「' + c.dialogue + "」</div>" : "") + "</div>"
+          : '<div class="codex-item locked"><div class="cx-name">？？？</div>' +
+            '<div class="cx-sub">' + (RARITY_ZH[c.rarity] || c.rarity) + "</div>" +
+            '<div class="cx-desc">尚未获得——接受记忆包交易或探索结局来收集</div></div>'
+      ).join("");
+      $("codex-progress").textContent =
+        "符文 " + got + " / " + ids.length + " · 记忆卡 " + owned.size + " / " + CP.MEMORY_CARDS.length;
     },
 
     /* ==================== 结局 ==================== */
@@ -762,6 +886,7 @@
 
     showEnd(ending, newly) {
       this.showScreen("screen-end");
+      CP.Fx.end(ending);
       const st = this.st;
       const card = $("end-card");
       const stats =
@@ -806,15 +931,30 @@
     renderGuide() {
       $("guide-card").innerHTML =
         "<h2>玩 法 指 南</h2>" +
-        "<p><b>目标：</b>在每一期（Deadline）结束前，把足够的金币存入 ATM 还清债务。还不上就会进入死亡倒计时——倒计时归零，地板就会打开。</p>" +
-        "<p><b>老虎机：</b>3×5 共 15 格。「多旋转」7 次、「少旋转」3 次但每回合券更多；金币不足会触发「欠转」；身无分文时可以免费转（只给券）。</p>" +
-        "<p><b>计分：</b>符号价值 × 符号倍率 × 图案倍数 × 图案倍率。大图案会吞并所含的小图案（巨横吞横三连、三角吞斜线与锯齿……），大满贯例外。</p>" +
-        "<p><b>幸运值：</b>强制把等量格子变成同一符号，15 点 = 保底大满贯；连续空转会触发机器的怜悯（橡皮筋加成）。</p>" +
-        "<p><b>利息：</b>每回合结束按已存入金额支付利息（基础 7%）——尽早存款！</p>" +
-        "<p><b>幸运券：</b>购买幸运符、重掷电话选项用。回合结束与提前结束本期都会获得。</p>" +
-        "<p><b>666：</b>第 3 期起每次旋转后都可能降下 666：没收本回合所得（第 7 期起=全部金币），并在抽屉留下尸块。连续 3 次拒绝红色来电保持神圣，666 会化为 999……</p>" +
-        "<p><b>钥匙与结局：</b>集齐 5 块尸块并解锁全部 4 个抽屉后，announcer 会给你钥匙。保持神圣（未接过红色来电）得到白钥匙→好结局；否则是暗红钥匙→坏结局。</p>" +
-        '<p class="dim">提示：空格键 = 拉杆；点击幸运符查看详情；抽屉里的符文不占装备位。</p>';
+        "<h3>🎯 核心目标</h3>" +
+        "<p>你被困在一间只有一台老虎机的牢房里。每一期（Deadline）都有一笔<b>债务</b>——在回合耗尽前把金币<b>存入 ATM</b> 还清它。还不上就进入死亡倒计时，再拖 3 个回合，地板就会打开。<b>赚钱的唯一方式就是旋转老虎机。</b></p>" +
+        "<h3>🃏 记忆卡是什么？</h3>" +
+        "<p>开始新一局前要<b>插入一张记忆卡</b>——它代表「你」这个人过去的人生，直接改写整局规则：有的让你每期只剩 1 回合但旋转多达 21 次（屏幕成瘾），有的让债务减半但开局身无分文（旧伤），有的让 666 概率翻倍但大满贯能追回损失（康复尝试）……<b>抹除的记忆卡</b>是无效果的普通卡。新记忆卡靠期末的「记忆包交易」和结局来收集。卡片下方的一句话，是电话那头的人对你的评价。</p>" +
+        "<h3>🎰 旋转与费用</h3>" +
+        "<p>每回合开始时二选一：<b>多旋转</b>（花费拉杆费，获得 7 次旋转）或<b>少旋转</b>（同样的拉杆费，但只有 3 次旋转，回合结算时多给 3 券）。金币不够整轮时触发<b>欠转</b>（花光身上金币按比例折算次数）；身无分文则是<b>免费回合</b>——还能转，但图案不计酬，结算只有 1 券。拉杆费每期上涨（7 → 14 → 28 → ……）。</p>" +
+        "<h3>💯 图案与计分</h3>" +
+        "<p>15 格里凑出指定形状就中奖。单个图案的赔付 = <b>符号价值总和 × 符号倍率 × 图案倍数 × 图案倍率</b>，再乘触发次数。短横/短竖/短斜（2 格）是额外小图案；<b>大图案会吞并所含的小图案</b>（巨横吞横三连、三角吞锯齿），但<b>大满贯（15 格全同）不吞任何人</b>，会与其他图案同时结算。具体形状点游戏里的「图案板」查看。</p>" +
+        "<h3>✨ 幸运值</h3>" +
+        "<p>每次旋转随机产生 0~15 点幸运：把等量格子强制变成同一符号，<b>15 点 = 保底大满贯</b>。连续空转会触发机器的「怜悯」（橡皮筋加成），幸运值悄悄上涨。</p>" +
+        "<h3>🟥 红色按钮（重要！）</h3>" +
+        "<p>很多幸运符带 <b>⚡充能</b>标记——它们平时不生效，只有点<b>红色按钮</b>才触发，每次消耗 1 格能量。能量在<b>每个回合结算时自动 +1</b>（部分符文例外）。正确节奏：先按红按钮蓄力，再拉杆！点按钮本身免费。</p>" +
+        "<h3>🏦 ATM、利息与幸运券</h3>" +
+        "<p>金币分两种去处：<b>存入 ATM</b> 的钱按回合生息（基础 7%），是还债专用；<b>身上</b>的金币用于拉杆与补货。<b>尽早存钱吃利息！</b><b>幸运券</b>（绿色）是买幸运符的货币，回合结算、少旋转、提前结束本期都会给。</p>" +
+        "<h3>☎ 电话</h3>" +
+        "<p>第 2 期起每期开始电话会响：3 个选项选 1 个，可花券重掷。普通来电都是增益。<b>红色来电</b>给超值收益但接听即永久放弃神圣资格；连续<b>挂断 3 次红色来电</b>会开启神圣之路——之后 666 化为 999（不再没收金币），还可能出现神圣来电与神圣符文。</p>" +
+        "<h3>😈 666 / 999</h3>" +
+        "<p>第 3 期起每次旋转后可能降下 6/66/666。6 只是印在盘上占格；66 占两格；<b>666 会没收本回合所得</b>（第 7 期起=身上全部金币），并在抽屉留下一块尸块。被 6 印上的格子不再参与图案判定。</p>" +
+        "<h3>🍀 幸运符 / 特性 / 修饰词</h3>" +
+        "<p>商店用券买<b>幸运符</b>（被动 / 随机触发 / ⚡充能三类，详见图鉴）；电话能给符文贴<b>特性</b>（贪婪、野心、执念……）；转盘符号有几率自带<b>修饰词</b>：金色=价值永久上涨、代币=立即得钱、票券、复现=图案多触发一次、电池、锁链。<b>抽屉</b>存符文不占容量，可来回倒腾。</p>" +
+        "<h3>💀 尸块、钥匙与结局</h3>" +
+        "<p>集齐 5 块尸块并解锁全部 4 个抽屉后，announcer 会递来钥匙：<b>白钥匙</b>（保持神圣）→ 电梯上升的好结局；<b>暗红钥匙</b>→ 门后无门的坏结局；还不上债 = 坠入深渊。死亡后抽屉遗留会变成下一位「房客」的尸块。</p>" +
+        '<p class="dim g-tip">💡 小贴士：空格键 = 拉杆；点击幸运符看详情/转卖/入抽屉；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
+      CP.Fx.guide();
     },
   };
 

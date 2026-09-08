@@ -12,6 +12,12 @@
 
 <!-- ==================== 标题画面 ==================== -->
 <section id="screen-title" class="screen">
+  <div class="title-fx" aria-hidden="true">
+    <div class="fx-rich" id="fx-rich"><div class="fx-zone-label">💰 步步为营 · 还清债务 · 身家暴涨</div></div>
+    <div class="fx-doom" id="fx-doom"><div class="fx-zone-label">💀 一步走错 · 利滚利 · 坠入深渊</div></div>
+    <div class="fx-pit"></div>
+  </div>
+  <div class="fx-marquee" aria-hidden="true"><div class="fx-track" id="fx-track"></div></div>
   <div class="title-card">
     <div class="logo-clover">🍀</div>
     <h1 class="logo-text">CLOVER&nbsp;PIT</h1>
@@ -21,6 +27,7 @@
     <div class="title-buttons">
       <button id="btn-new-run" class="btn btn-amber">开始新的一局</button>
       <button id="btn-guide" class="btn">玩法指南</button>
+      <button id="btn-codex" class="btn">道具图鉴</button>
     </div>
     <p class="title-foot">致敬 Panik Arcade《CloverPit》的非官方同人复刻</p>
   </div>
@@ -45,6 +52,7 @@
       <div class="hud-cell"><span class="hud-label">回合</span><span id="hud-round" class="hud-num">0/3</span></div>
       <div class="hud-cell"><span class="hud-label">旋转</span><span id="hud-spins" class="hud-num amber">—</span></div>
       <div class="hud-cell"><span class="hud-label">幸运</span><span id="hud-luck" class="hud-num amber">—</span></div>
+      <button id="btn-codex-game" class="btn btn-mini">📖 图鉴</button>
       <button id="btn-menu" class="btn btn-mini">放弃本局</button>
     </header>
 
@@ -58,8 +66,8 @@
         <div id="slot-grid" class="slot-grid"></div>
         <div id="spin-info" class="spin-info"><div class="dim">拉下拉杆，开始旋转……</div></div>
         <div class="machine-controls">
-          <button id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
-          <button id="btn-red" class="btn btn-red">◉ 红色按钮</button>
+          <button id="btn-spin" class="btn btn-lever" title="旋转费用已在选择旋转方式时支付">拉 下 拉 杆</button>
+          <button id="btn-red" class="btn btn-red" title="消耗⚡能量：立即触发所有充能型幸运符（能量每回合结算时自动回复）">◉ 红色按钮</button>
         </div>
         <div id="round-controls" class="round-controls"></div>
       </div>
@@ -75,10 +83,10 @@
           <div class="atm-row small dim"><span id="atm-note"></span></div>
         </div>
         <div class="atm-buttons">
-          <button class="btn btn-mini dep" data-f="0.25">存25%</button>
-          <button class="btn btn-mini dep" data-f="0.5">存50%</button>
-          <button class="btn btn-mini dep dep-max" data-f="1">全存</button>
-          <button id="btn-end-deadline" class="btn btn-mini btn-warn">结束本期</button>
+          <button class="btn btn-mini dep" data-f="0.25">存入 25%</button>
+          <button class="btn btn-mini dep" data-f="0.5">存入 50%</button>
+          <button class="btn btn-mini dep dep-max" data-f="1">全部存入</button>
+          <button id="btn-end-deadline" class="btn btn-mini btn-warn" title="自动把身上金币存入ATM并结算本期">结束本期</button>
         </div>
         <div id="countdown-banner" class="countdown hidden"></div>
         <div id="pack-banner" class="pack hidden"></div>
@@ -172,9 +180,29 @@
   <button id="btn-guide-back" class="btn btn-amber">← 返回</button>
 </section>
 
+<!-- ==================== 道具图鉴 ==================== -->
+<div id="modal-codex" class="modal hidden">
+  <div class="modal-box codex-box">
+    <div class="codex-head">
+      <h3>📖 道具图鉴</h3>
+      <span id="codex-progress" class="dim small"></span>
+      <button id="btn-codex-close" class="btn btn-mini">✕ 关闭</button>
+    </div>
+    <div class="codex-tabs">
+      <button class="tab active" data-codex="charms">幸运符</button>
+      <button class="tab" data-codex="cards">记忆卡</button>
+    </div>
+    <div id="codex-charms" class="codex-grid"></div>
+    <div id="codex-cards" class="codex-grid hidden"></div>
+    <div class="dim small codex-hint">在商店 / 抽屉 / 装备中遇到的道具会自动解锁；记忆卡收录自你持有的收藏。</div>
+  </div>
+</div>
+
+<script src="js/gsap.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/charms.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/fx.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
