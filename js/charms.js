@@ -862,6 +862,13 @@
     instant(st, c) { st.cadaver.skull = true; },
   });
 
+  /* ---------------- 可重复购买（默认：同一种符文同时只能拥有一件） ----------------
+   * 仅这些「不占容量 / 买到即生效」的消耗型符文允许叠加购买。 */
+  for (const id of ["cigarettes", "cardboard_house", "one_trick_pony", "fortune_cookie",
+                    "crowbar", "car_battery", "lost_briefcase"]) {
+    if (CH[id]) CH[id].stackable = true;
+  }
+
   CP.CHARMS = CH;
   CP.CharmFx = {
     /* 生成符文实例（instant 类立即生效） */
@@ -889,11 +896,16 @@
       opts = opts || {};
       const unlocked = (st.meta && st.meta.unlocked) || Object.keys(CH).filter((k) => CH[k].base);
       const banned = new Set((st.flags.banned || []).concat(st.flags.bannedCharmId ? [st.flags.bannedCharmId] : []));
+      // 已拥有（装备中 / 抽屉里）的唯一符文不再出货，商店不再被买不起的重复品占满
+      const owned = new Set();
+      for (const c of st.charms || []) owned.add(c.id);
+      for (const c of st.drawers || []) if (c) owned.add(c.id);
       const pool = [];
       for (const id in CH) {
         const d = CH[id];
         if (d.cadaver && id !== "skull") continue;
         if (banned.has(id)) continue;
+        if (!d.stackable && owned.has(id)) continue;
         if (id === "cardboard_house" && st.flags.cardboardUsed) continue;
         if (opts.basicOnly && !d.base) continue;
         if (opts.noCadaver && d.cadaver) continue;
@@ -901,7 +913,13 @@
         if (!opts.basicOnly && unlocked.indexOf(id) < 0) continue;
         pool.push([id, RARITY_W[d.rarity] || 50]);
       }
-      if (!pool.length) return "lucky_cat";
+      if (!pool.length) {
+        // 唯一符文都拿齐了：退回允许叠加的消耗品池，别让商店永远卡在"幸运猫"
+        const spare = Object.keys(CH).filter((id) =>
+          CH[id].stackable && !banned.has(id) && (opts.basicOnly ? CH[id].base : unlocked.indexOf(id) >= 0));
+        if (spare.length) return pickR(st, spare);
+        return "lucky_cat";
+      }
       let tot = 0;
       for (const e of pool) tot += e[1];
       let x = st.rng() * tot;

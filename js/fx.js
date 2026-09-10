@@ -240,6 +240,29 @@
     }
   });
 
+  /* ---------------- 开奖情绪层 ---------------- */
+  Fx.bigWin = safe(function (level) {
+    const lv = level || 1;
+    flash("255, 210, 74", lv >= 2 ? 0.42 : 0.3);
+    shake(lv >= 2 ? 13 : 7);
+    coinRain(lv >= 2 ? 22 : 10);
+    const grid = $id("slot-grid");
+    if (grid) gsap.fromTo(grid, { scale: lv >= 2 ? 1.055 : 1.03 },
+      { scale: 1, duration: 0.62, ease: "elastic.out(1, 0.5)", clearProps: "scale" });
+  });
+
+  Fx.miss = safe(function () {
+    const grid = $id("slot-grid");
+    if (grid) gsap.fromTo(grid, { x: -5 }, { x: 0, duration: 0.5, ease: "elastic.out(1, 0.4)", clearProps: "x" });
+    const el = document.createElement("div");
+    el.className = "fx-miss";
+    el.textContent = "……";
+    document.body.appendChild(el);
+    gsap.timeline({ onComplete: () => el.remove() })
+      .fromTo(el, { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.28 })
+      .to(el, { autoAlpha: 0, y: -20, duration: 0.5, delay: 0.45 });
+  });
+
   /* ---------------- 阶段横幅 ---------------- */
   Fx.banner = safe(function (text, cls) {
     if (!text) return;

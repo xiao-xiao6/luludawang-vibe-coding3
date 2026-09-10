@@ -668,6 +668,115 @@ body.evil { animation: evilflash 0.9s ease-out; }
 }
 .title-buttons { flex-wrap: wrap; }
 
+/* =========================================================================
+ * v4：开奖演出 / 品质与触发类型标识 / 通话记录 / 新音效反馈
+ * ========================================================================= */
+
+/* —— 老虎机滚轮：由快到慢，逐列停稳 —— */
+.slot-cell.rolling .cs {
+  filter: blur(0.9px);
+  animation: rollblur var(--rollDur, 0.09s) linear infinite;
+}
+@keyframes rollblur {
+  0% { transform: translateY(-34%) scaleY(0.86); opacity: 0.55; }
+  50% { transform: translateY(0) scaleY(1); opacity: 1; }
+  100% { transform: translateY(34%) scaleY(0.86); opacity: 0.55; }
+}
+.slot-cell.settled {
+  animation: cellsettle 0.4s cubic-bezier(.2,1.6,.4,1);
+  border-color: var(--amber-dim);
+}
+@keyframes cellsettle {
+  0% { transform: scale(0.86) translateY(-7px); filter: brightness(2.1); }
+  55% { transform: scale(1.09) translateY(0); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* —— 品质标识（图鉴 / 商店 / 装备 / 详情共用） —— */
+.rarity-chip {
+  flex: none; font-size: 9px; line-height: 1; padding: 3px 5px; border-radius: 3px;
+  border: 1px solid var(--line2); color: var(--dim); white-space: nowrap;
+}
+.rarity-chip.r-Common { border-color: #6b6457; color: #b8b0a0; background: #211d16; }
+.rarity-chip.r-Uncommon { border-color: #5c7a1a; color: #b8d96a; background: #1a2010; }
+.rarity-chip.r-Rare { border-color: #9c5722; color: #e0a060; background: #221509; }
+.rarity-chip.r-Epic { border-color: #b04ad0; color: #e0a8ff; background: #20122a; }
+.rarity-chip.r-Legendary {
+  border-color: var(--gold); color: var(--gold); background: #2a2010;
+  box-shadow: 0 0 8px rgba(232,185,60,.35);
+}
+.cc-top { display: flex; align-items: flex-start; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.cc-top .cc-name { flex: 1 1 auto; }
+.cx-top { display: flex; align-items: center; gap: 6px; }
+.cx-top .cx-name { flex: 1; }
+
+/* —— 触发类型：被动 / 随机 / 耗能 / 即时 一眼可辨 —— */
+.cc-type {
+  font-size: 9px; margin-top: 3px; padding: 1px 4px; border-radius: 3px;
+  border: 1px solid var(--line2); display: inline-block;
+}
+.tt-passive { color: #9dbf2e; border-color: #5c7a1a; }
+.tt-random { color: var(--amber); border-color: var(--amber-dark); }
+.tt-button { color: #ff8a70; border-color: #7a2a1a; }
+.tt-instant { color: #7fd8ff; border-color: #2a5a70; }
+.tt-cadaver { color: #c88aff; border-color: #5a3a7a; }
+.codex-item .cc-type { margin-top: 4px; }
+
+/* —— 图鉴：触发方式与品质分布说明 —— */
+.codex-legend { margin-bottom: 10px; }
+.codex-legend .lg-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.lg-item {
+  flex: 1 1 190px; border: 1px solid var(--line2); border-radius: 6px;
+  padding: 6px 9px; font-size: 10.5px; line-height: 1.5; background: #16120c;
+}
+.lg-item b { display: block; font-size: 11px; margin-bottom: 2px; }
+.lg-item span { color: var(--dim); }
+.lg-item.tt-passive b { color: #9dbf2e; }
+.lg-item.tt-random b { color: var(--amber); }
+.lg-item.tt-button b { color: #ff8a70; }
+.lg-item.tt-instant b { color: #7fd8ff; }
+.lg-rars { margin-top: 7px; font-size: 11px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* —— 商店：已拥有 —— */
+.store-card.owned { opacity: 0.58; cursor: default; }
+.store-card.owned .cc-price { color: var(--dim); }
+
+/* —— 幸运符详情：标题 + 品质并列 —— */
+.cd-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.cd-head .cd-title { font-size: 17px; }
+.cd-head .cd-title.r-Common { color: var(--text); }
+.cd-head .cd-title.r-Uncommon { color: #b8d96a; }
+.cd-head .cd-title.r-Rare { color: #e0a060; }
+.cd-head .cd-title.r-Epic { color: #e0a8ff; }
+.cd-head .cd-title.r-Legendary { color: var(--gold); }
+
+/* —— 通话记录 —— */
+.calllog-box { max-width: 620px; }
+.calllog-body { max-height: 58vh; overflow-y: auto; padding-right: 4px; }
+.calllog-item {
+  border: 1px solid var(--line2); border-left-width: 3px; border-radius: 6px;
+  padding: 8px 11px; margin-bottom: 7px; background: #191510;
+}
+.calllog-item.t-red { border-left-color: #7a2a1a; }
+.calllog-item.t-sacred { border-left-color: var(--gold); }
+.calllog-item.t-normal { border-left-color: var(--amber-dark); }
+.cl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.cl-kind { font-size: 10px; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line2); }
+.cl-kind.ok { color: #a8d24a; border-color: #5c7a1a; }
+.cl-kind.bad { color: #ff6a55; border-color: #7a2a1a; }
+.cl-kind.wait { color: var(--dim); }
+.cl-name { flex: 1; color: var(--amber); font-size: 13px; }
+.cl-when { color: var(--dim); font-size: 10.5px; }
+.cl-desc { font-size: 11px; color: var(--dim); margin-top: 5px; line-height: 1.6; }
+
+/* —— 一分钱没转：失落的提示演出 —— */
+.fx-miss {
+  position: fixed; left: 50%; top: 42%; z-index: 97; pointer-events: none;
+  transform: translateX(-50%); font-size: 26px; letter-spacing: 0.5em; color: var(--dim);
+  text-shadow: 0 0 16px rgba(0,0,0,.8);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fx-coin, .fx-doom-bit { display: none; }
+  .slot-cell.rolling .cs, .slot-cell.settled { animation: none; }
 }

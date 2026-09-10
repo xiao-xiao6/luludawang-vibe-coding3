@@ -53,7 +53,9 @@
       <div class="hud-cell"><span class="hud-label">回合</span><span id="hud-round" class="hud-num">0/3</span></div>
       <div class="hud-cell"><span class="hud-label">旋转</span><span id="hud-spins" class="hud-num amber">—</span></div>
       <div class="hud-cell"><span class="hud-label">幸运</span><span id="hud-luck" class="hud-num amber">—</span></div>
+      <button id="btn-calllog" class="btn btn-mini">☎ 通话记录</button>
       <button id="btn-codex-game" class="btn btn-mini">📖 图鉴</button>
+      <button id="btn-sound" class="btn btn-mini">🔊 音效</button>
       <button id="btn-menu" class="btn btn-mini">放弃本局</button>
     </header>
 
@@ -67,7 +69,7 @@
         <div id="slot-grid" class="slot-grid"></div>
         <div id="spin-info" class="spin-info"><div class="dim">拉下拉杆，开始旋转……</div></div>
         <div class="machine-controls">
-          <button id="btn-spin" class="btn btn-lever" title="旋转费用已在选择旋转方式时支付">拉 下 拉 杆</button>
+          <button id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
           <button id="btn-red" class="btn btn-red" title="消耗⚡能量：立即触发所有充能型幸运符（能量每回合结算时自动回复）">◉ 红色按钮</button>
         </div>
         <div id="round-controls" class="round-controls"></div>
@@ -145,8 +147,22 @@
     <div id="phone-options" class="phone-options"></div>
     <div class="phone-actions">
       <button id="btn-phone-reroll" class="btn btn-mini"></button>
+      <button id="btn-phone-log" class="btn btn-mini">📜 通话记录</button>
       <button id="btn-phone-later" class="btn btn-mini">等会儿再说</button>
     </div>
+  </div>
+</div>
+
+<!-- ==================== 通话记录 ==================== -->
+<div id="modal-calllog" class="modal hidden">
+  <div class="modal-box calllog-box">
+    <div class="codex-head">
+      <h3>☎ 通话记录</h3>
+      <span id="calllog-progress" class="dim small"></span>
+      <button id="btn-calllog-close" class="btn btn-mini">✕ 关闭</button>
+    </div>
+    <div id="calllog-body" class="calllog-body"></div>
+    <div class="dim small codex-hint">你接听过、挂断过、推迟过的每一通电话都会记在这里。</div>
   </div>
 </div>
 
@@ -194,6 +210,7 @@
       <button class="tab active" data-codex="charms">幸运符</button>
       <button class="tab" data-codex="cards">记忆卡</button>
     </div>
+    <div id="codex-legend" class="codex-legend"></div>
     <div id="codex-charms" class="codex-grid"></div>
     <div id="codex-cards" class="codex-grid hidden"></div>
     <div class="dim small codex-hint">在商店 / 抽屉 / 装备中遇到的道具会自动解锁；记忆卡收录自你持有的收藏。</div>

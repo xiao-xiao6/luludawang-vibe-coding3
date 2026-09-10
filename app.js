@@ -13,45 +13,105 @@
   const SCREENS = ["screen-title", "screen-cards", "screen-game", "screen-end", "screen-guide"];
   const SAVE_KEY = "cloverpit_run_v1"; // 局内存档（刷新/关页后续玩）
 
-  /* ---------------- 简易 WebAudio 音效 ---------------- */
+  /* ---------------- 简易 WebAudio 音效 ----------------
+   * 所有声音都经过同一只 master gain：muted 时整体静音，音量集中在这里统一调。 */
   const Sfx = {
     ctx: null,
+    master: null,
+    muted: false,
     ensure() {
       if (!this.ctx) {
-        try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* 无音频 */ }
+        try {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = this.muted ? 0 : 0.9;
+          this.master.connect(this.ctx.destination);
+        } catch (e) { /* 无音频 */ }
       }
+      if (this.ctx && this.ctx.state === "suspended") { try { this.ctx.resume(); } catch (e) { /* 忽略 */ } }
       return this.ctx;
     },
-    tone(freq, dur, type, vol, delay) {
+    setMuted(m) {
+      this.muted = !!m;
+      if (this.master) { try { this.master.gain.value = m ? 0 : 0.9; } catch (e) { /* 忽略 */ } }
+    },
+    tone(freq, dur, type, vol, delay, glide) {
       const c = this.ensure();
       if (!c) return;
       try {
         const o = c.createOscillator(), g = c.createGain();
         o.type = type || "square";
-        o.frequency.value = freq;
-        o.connect(g); g.connect(c.destination);
         const t = c.currentTime + (delay || 0);
-        const v = vol || 0.04;
-        g.gain.setValueAtTime(v, t);
+        const v = vol || 0.06;
+        o.frequency.setValueAtTime(freq, t);
+        if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(20, glide), t + dur);
+        o.connect(g); g.connect(this.master || c.destination);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(v, t + 0.012);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.start(t); o.stop(t + dur + 0.03);
+        o.start(t); o.stop(t + dur + 0.04);
       } catch (e) { /* 播放失败静默 */ }
     },
-    spin() { this.tone(190, 0.07, "square", 0.025); this.tone(150, 0.09, "square", 0.02, 0.05); },
-    win(n) {
-      this.tone(660, 0.09, "square", 0.035);
-      this.tone(880, 0.12, "square", 0.035, 0.09);
-      if ((n || 0) > 3) this.tone(1174, 0.16, "square", 0.035, 0.2);
+    noise(dur, vol, delay, hp) {
+      const c = this.ensure();
+      if (!c) return;
+      try {
+        const n = Math.max(1, Math.floor(c.sampleRate * dur));
+        const buf = c.createBuffer(1, n, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+        const src = c.createBufferSource(); src.buffer = buf;
+        const f = c.createBiquadFilter(); f.type = "highpass"; f.frequency.value = hp || 700;
+        const g = c.createGain(); g.gain.value = vol || 0.06;
+        src.connect(f); f.connect(g); g.connect(this.master || c.destination);
+        src.start(c.currentTime + (delay || 0));
+      } catch (e) { /* 静默 */ }
     },
-    evil() { this.tone(82, 0.5, "sawtooth", 0.07); this.tone(58, 0.6, "sawtooth", 0.06, 0.12); },
-    coin() { this.tone(1244, 0.05, "square", 0.025); this.tone(1660, 0.08, "square", 0.025, 0.05); },
-    holy() { this.tone(523, 0.3, "sine", 0.05); this.tone(784, 0.45, "sine", 0.05, 0.16); this.tone(1046, 0.5, "sine", 0.04, 0.32); },
+    /* 拉杆：机械咔哒 */
+    lever() { this.tone(150, 0.06, "square", 0.11, 0, 90); this.noise(0.05, 0.05, 0.01, 1200); },
+    /* 滚轮 tick：speed 1→0.25，音高与音量同步下落，制造"由快到慢"的紧张感 */
+    tick(speed) {
+      const s = Math.max(0.25, Math.min(1, speed == null ? 1 : speed));
+      this.tone(620 + 620 * s, 0.03, "square", 0.04 + 0.04 * s);
+      if (s > 0.6) this.noise(0.02, 0.025, 0, 2400);
+    },
+    /* 一列停稳：咔！ */
+    stop(pitch) {
+      const p = pitch || 320;
+      this.tone(p, 0.08, "square", 0.11, 0, p * 0.65);
+      this.noise(0.05, 0.05, 0, 900);
+    },
+    spin() { this.lever(); },
+    /* 中奖：金额/图案越多越华丽 */
+    win(n, jackpot) {
+      const steps = [784, 988, 1175, 1568, 1976];
+      const k = jackpot ? 5 : Math.max(1, Math.min(5, n || 1));
+      for (let i = 0; i < k; i++) this.tone(steps[i], 0.13, "square", 0.08, i * 0.075);
+      if (k >= 4) for (let i = 0; i < k; i++) this.tone(steps[i] * 2, 0.1, "triangle", 0.045, 0.34 + i * 0.06);
+      if (jackpot) { this.noise(0.5, 0.05, 0, 400); this.tone(1568, 0.7, "sine", 0.075, 0.2); }
+    },
+    smallWin() { this.tone(880, 0.06, "square", 0.065); this.tone(1174, 0.09, "square", 0.06, 0.06); },
+    /* 一分钱没转：失落但不刺耳，让人想"再来一次" */
+    miss() { this.tone(330, 0.16, "triangle", 0.06, 0, 190); this.tone(232, 0.26, "sine", 0.05, 0.1, 150); },
+    /* 金币落袋：赚得越多叮得越多 */
+    coin(n) {
+      const k = Math.max(1, Math.min(8, n || 1));
+      for (let i = 0; i < k; i++) {
+        this.tone(1244 + (i % 3) * 120, 0.045, "square", 0.055, i * 0.035);
+        this.tone(1660, 0.06, "square", 0.045, i * 0.035 + 0.02);
+      }
+    },
+    evil() { this.tone(88, 0.5, "sawtooth", 0.11, 0, 40); this.tone(58, 0.7, "sawtooth", 0.09, 0.12, 30); this.noise(0.4, 0.05, 0, 200); },
+    holy() { [523, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.5, "sine", 0.075, i * 0.14)); },
+    unlock() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.16, "triangle", 0.075, i * 0.09)); },
+    click() { this.tone(520, 0.03, "square", 0.05); },
   };
 
   const App = {
     meta: null,
     st: null,
     spinning: false,
+    animating: false,
     selCharmUid: null,
     lastSpin: null,
     _shapes: null,
@@ -59,7 +119,9 @@
     /* ==================== 初始化 ==================== */
     init() {
       this.loadMeta();
+      try { if (localStorage.getItem("cloverpit_mute_v1") === "1") Sfx.setMuted(true); } catch (e) { /* 忽略 */ }
       this.bind();
+      this.syncSoundButton();
       this.showScreen("screen-title");
       this.renderTitle();
       this.refreshContinue();
@@ -199,10 +261,15 @@
         b.onclick = () => this.doDeposit(parseFloat(b.dataset.f));
       });
       document.querySelectorAll(".tab").forEach((t) => {
+        if (!t.dataset.tab) return; // 图鉴标签页自带 [data-codex] 处理器，别被这里覆盖掉
         t.onclick = () => this.switchTab(t.dataset.tab);
       });
       $("btn-phone-reroll").onclick = () => this.rerollPhone();
       $("btn-phone-later").onclick = () => this.deferPhone();
+      $("btn-phone-log").onclick = () => this.openCallLog();
+      $("btn-calllog").onclick = () => this.openCallLog();
+      $("btn-calllog-close").onclick = () => $("modal-calllog").classList.add("hidden");
+      $("btn-sound").onclick = () => this.toggleSound();
       $("btn-charm-close").onclick = () => $("modal-charm").classList.add("hidden");
       $("btn-charm-sell").onclick = () => this.sellSelected();
       $("btn-charm-drawer").onclick = () => this.drawerSelected();
@@ -211,7 +278,7 @@
         if (this.st && this.st.phone.pending) this.openPhone();
       };
       document.addEventListener("keydown", (ev) => {
-        if (ev.code === "Space" && this.st && this.st.phase === "spinning" && !this.spinning) {
+        if (ev.code === "Space" && this.st && this.st.phase === "spinning" && !this.spinning && !this.animating) {
           ev.preventDefault();
           this.doSpin();
         }
@@ -434,6 +501,34 @@
       });
     },
 
+    rarityChip(r) {
+      const key = r || "Common";
+      return '<span class="rarity-chip r-' + key + '">' + (RARITY_ZH[key] || key) + "</span>";
+    },
+
+    /* 三类触发方式的视觉区分：被动常驻 / 随机触发 / ⚡消耗能量 */
+    triggerTag(def) {
+      const d = def || {};
+      if (d.cadaver) return '<div class="cc-type tt-cadaver">残骸 · 不可弃</div>';
+      if (d.trigger === "instant") return '<div class="cc-type tt-instant">✦ 即时生效</div>';
+      if (d.button) return '<div class="cc-type tt-button">⚡ 消耗能量发动</div>';
+      if (d.trigger === "random") return '<div class="cc-type tt-random">◆ 随机触发</div>';
+      return '<div class="cc-type tt-passive">∞ 被动常驻</div>';
+    },
+
+    toggleSound() {
+      const muted = !Sfx.muted;
+      Sfx.setMuted(muted);
+      try { localStorage.setItem("cloverpit_mute_v1", muted ? "1" : "0"); } catch (e) { /* 忽略 */ }
+      this.syncSoundButton();
+      if (!muted) Sfx.click();
+    },
+
+    syncSoundButton() {
+      const b = $("btn-sound");
+      if (b) b.textContent = Sfx.muted ? "🔇 静音中" : "🔊 音效";
+    },
+
     charmCardHTML(c) {
       const def = CP.CHARMS[c.id] || {};
       const trait = c.trait ? CP.TRAITS[c.trait] : null;
@@ -446,7 +541,8 @@
         charge = '<div class="chg"><i style="width:' + pct + '%"></i></div><span class="chg-n">⚡' + c.charges + "/" + c.maxCharges + "</span>";
       }
       return '<div class="charm-card r-' + (def.rarity || "Common") + '" data-uid="' + c.uid + '" title="' + (def.desc || "").replace(/"/g, "'") + '">' +
-        '<div class="cc-name">' + (def.name || c.id) + "</div>" +
+        '<div class="cc-top"><div class="cc-name">' + (def.name || c.id) + "</div>" + this.rarityChip(def.rarity) + "</div>" +
+        this.triggerTag(def) +
         (trait ? '<div class="cc-trait" style="color:' + trait.color + '">' + trait.name + "</div>" : "") +
         charge +
         (flags.length ? '<div class="cc-flags">' + flags.join("·") + "</div>" : "") +
@@ -471,10 +567,12 @@
       const def = CP.CHARMS[entry.id] || {};
       const price = E.charmPrice(this.st, entry);
       const trait = entry.trait ? CP.TRAITS[entry.trait] : null;
-      return '<div class="charm-card store-card r-' + (def.rarity || "Common") + '" data-slot="' + i + '">' +
-        '<div class="cc-name">' + (def.name || entry.id) + "</div>" +
+      const owned = !def.stackable && E.ownsCharm(this.st, entry.id);
+      return '<div class="charm-card store-card r-' + (def.rarity || "Common") + (owned ? " owned" : "") + '" data-slot="' + i + '">' +
+        '<div class="cc-top"><div class="cc-name">' + (def.name || entry.id) + "</div>" + this.rarityChip(def.rarity) + "</div>" +
+        this.triggerTag(def) +
         (trait ? '<div class="cc-trait" style="color:' + trait.color + '">' + trait.name + "</div>" : "") +
-        '<div class="cc-price">' + (entry.free ? "免费！" : price + " 券") + "</div>" +
+        '<div class="cc-price">' + (owned ? "已拥有 · 不可重复" : entry.free ? "免费！" : price + " 券") + "</div>" +
         '<div class="cc-desc">' + (def.desc || "") + "</div>" +
         "</div>";
     },
@@ -584,39 +682,96 @@
       this.renderAll();
     },
 
+    /* 旋转演出：结果先由引擎算好，动画只负责「揭晓」。
+     * 5 列依次停稳 + 节拍由快到慢 + 逐列机械咔声 = 开奖前那几秒的紧张感。 */
     doSpin() {
       const st = this.st;
-      if (this.spinning || !st || st.phase !== "spinning" || st.spinsLeft <= 0) return;
+      if (this.spinning || this.animating || !st || st.phase !== "spinning" || st.spinsLeft <= 0) return;
       this.spinning = true;
+      this.animating = true;
       $("btn-spin").disabled = true;
       $("btn-red").disabled = true;
       const ids = CP.SYMBOLS.map((s) => s.id);
       const grid = $("slot-grid");
+      const cells = grid.children;
       CP.Fx.lever();
-      Sfx.spin();
-      let frames = 7;
-      const tick = () => {
-        if (frames-- > 0) {
-          const cells = grid.children;
-          for (let i = 0; i < 15; i++) {
-            if (st.sixCells.includes(i)) continue;
-            const face = SYM_EMOJI[ids[Math.floor(Math.random() * ids.length)]];
+      Sfx.lever();
+
+      const res = E.spin(st);
+      const target = (res && res.board) || st.board;
+      const rolling = [];
+      for (let i = 0; i < 15; i++) {
+        const cell = cells[i];
+        if (cell) cell.classList.remove("hit", "lucky"); // 上一转的高亮不该留在新一转里
+        if (!st.sixCells.includes(i)) rolling.push(i);
+      }
+      for (const i of rolling) if (cells[i]) cells[i].classList.add("rolling");
+      if (grid.style) grid.style.setProperty("--rollDur", "0.09s");
+
+      const COL_STOP = [820, 1120, 1420, 1780, 2220]; // 每列停稳时刻(ms)，越往后等得越久
+      const TOTAL = 2440;                            // 全停 → 揭晓
+      const t0 = performance.now();
+      let lastTick = 0, stopped = 0;
+      const stoppedCols = {};
+
+      const frame = (now) => {
+        const el = now - t0;
+        const sp = Math.max(0.18, 1 - (el / TOTAL) * 0.86); // 1 → 0.18：由快到慢
+        // 滚动节拍：音效与换脸同步变速
+        const interval = 40 + (1 - sp) * 150;
+        if (el - lastTick >= interval) {
+          lastTick = el;
+          Sfx.tick(sp);
+          for (const i of rolling) {
+            if (stoppedCols[i % 5]) continue;
+            const cell = cells[i];
+            if (!cell) continue;
             // 只改符号层：直接写 textContent 会把修饰词彩点（<i class="mod">）一起抹掉
-            const cs = cells[i].querySelector(".cs");
-            if (cs) cs.textContent = face;
-            else cells[i].textContent = face;
-            cells[i].className = "slot-cell";
+            const cs = cell.querySelector(".cs");
+            const face = SYM_EMOJI[ids[Math.floor(Math.random() * ids.length)]];
+            if (cs) cs.textContent = face; else cell.textContent = face;
           }
-          CP.Fx.spinTick(cells);
-          setTimeout(tick, 55);
-        } else {
-          const res = E.spin(st);
-          this.spinning = false;
-          if (res) this.renderSpinResult(res);
-          this.renderAll();
         }
+        if (grid.style) grid.style.setProperty("--rollDur", (0.08 + (1 - sp) * 0.34).toFixed(3) + "s");
+        // 逐列停稳：咔！
+        for (let c = 0; c < 5; c++) {
+          if (el < COL_STOP[c] || stoppedCols[c]) continue;
+          stoppedCols[c] = true;
+          stopped += 1;
+          Sfx.stop(280 + c * 65);
+          for (let r = 0; r < 3; r++) {
+            const i = r * 5 + c;
+            const cell = cells[i];
+            if (!cell) continue;
+            cell.classList.remove("rolling");
+            if (st.sixCells.includes(i)) continue;
+            const cs = cell.querySelector(".cs");
+            if (cs) cs.textContent = SYM_EMOJI[target[i]] || "·";
+            cell.classList.add("settled");
+            setTimeout(() => cell.classList.remove("settled"), 430);
+          }
+          if (stopped === 5) Sfx.stop(780);
+        }
+        if (el < TOTAL) requestAnimationFrame(frame);
+        else this.finishSpin(res);
       };
-      tick();
+      requestAnimationFrame(frame);
+    },
+
+    finishSpin(res) {
+      this.spinning = false;
+      this.animating = false;
+      const grid = $("slot-grid");
+      if (grid) {
+        grid.style.removeProperty("--rollDur");
+        for (const c of grid.children) c.classList.remove("rolling", "settled");
+      }
+      if (res) {
+        this.lastSpin = res;
+        this.renderBoard();
+        this.renderSpinResult(res);
+      }
+      this.renderAll();
     },
 
     renderSpinResult(res) {
@@ -631,14 +786,20 @@
         }
         html += '<div class="patterns-line">' + res.scored.map((r) => r.name + "×" + r.triggers).join(" · ") + "</div>";
         CP.Fx.combo(res.scored.length);
+        Sfx.win(res.scored.length, res.jackpot);
+        // 赚多赚少，音效与演出都不一样
+        const scale = st.debt > 0 ? res.payout / st.debt : 0;
+        Sfx.coin(Math.max(1, Math.min(8, Math.round(1 + scale * 14))));
         if (res.jackpot) {
           html += '<div class="jackpot-text">★ 大 满 贯 ★</div>';
-          Sfx.win(5);
-        } else {
-          Sfx.win(res.scored.length);
+          CP.Fx.bigWin(2);
+        } else if (scale >= 0.5) {
+          CP.Fx.bigWin(1);
         }
       } else {
         html += '<div class="payout dim">……什么都没有</div>';
+        Sfx.miss();
+        CP.Fx.miss();
       }
       if (res.luck.total > 0) {
         html += '<div class="luck-line">✨ 机器的火花……（幸运 +' + res.luck.total + "）</div>";
@@ -779,6 +940,7 @@
         CP.Fx.pop($("charm-row").lastElementChild);
       } else if (r.reason === "tickets") this.feed("幸运券不够……", "warn");
       else if (r.reason === "space") this.feed("符文容量已满！先转卖或收进抽屉吧", "warn");
+      else if (r.reason === "owned") this.feed("已经拥有这件符文了——同一种符文同时只能持有一件", "warn");
       this.renderAll();
     },
 
@@ -791,14 +953,15 @@
       const trait = c.trait ? CP.TRAITS[c.trait] : null;
       const sellGain = Math.ceil(((def.cost || 0) + (trait ? trait.cost : 0)) / 2) * (c.id === "sardines" ? 2 : 1);
       $("charm-detail").innerHTML =
-        '<div class="cd-head ' + "r-" + (def.rarity || "Common") + '">' + (def.name || c.id) + "</div>" +
-        '<div class="cd-sub">' + (RARITY_ZH[def.rarity] || "") +
-        (def.button ? " · 红按钮充能" : "") + (def.noSpace ? " · 不占容量" : "") +
-        (def.trigger === "random" ? " · 随机触发" : "") + "</div>" +
+        '<div class="cd-head">' + '<span class="cd-title r-' + (def.rarity || "Common") + '">' + (def.name || c.id) + "</span>" +
+        this.rarityChip(def.rarity) + "</div>" +
+        this.triggerTag(def) +
+        '<div class="cd-sub">' + (def.noSpace ? "不占容量" : "占用 1 格容量") + " · " +
+        (def.stackable ? "可叠加持有" : "唯一持有") + "</div>" +
         '<div class="cd-desc">' + (def.desc || "") + "</div>" +
         (trait ? '<div class="cd-trait" style="color:' + trait.color + '">特性 · ' + trait.name + "：" + trait.desc + "</div>" : "") +
-        (def.button ? '<div class="cd-chg">能量 ' + c.charges + " / " + c.maxCharges + "</div>" : "") +
-        '<div class="cd-sell">转卖价：' + sellGain + " 券</div>";
+        (def.button ? '<div class="cd-chg">⚡ 能量 ' + c.charges + " / " + c.maxCharges + "</div>" : "") +
+        '<div class="cd-sell">转卖可得：' + sellGain + " 券</div>";
       $("btn-charm-sell").disabled = !!def.cadaver;
       $("btn-charm-drawer").disabled = !st.drawers.some((x, i) => i < st.drawersUnlocked && !x);
       $("modal-charm").classList.remove("hidden");
@@ -909,6 +1072,34 @@
       $("modal-phone").classList.add("hidden");
     },
 
+    /* ==================== 通话记录 ==================== */
+    openCallLog() {
+      this.renderCallLog();
+      $("modal-calllog").classList.remove("hidden");
+      CP.Fx.modal("modal-calllog");
+    },
+
+    renderCallLog() {
+      const st = this.st;
+      const log = (st && st.phone && st.phone.log) || [];
+      $("calllog-progress").textContent = "本局已处理 " + log.length + " 通";
+      const body = $("calllog-body");
+      if (!log.length) {
+        body.innerHTML = '<div class="dim small">还没有任何通话记录——第 2 期起电话就会响，接听 / 挂断 / 推迟都会记在这里。</div>';
+        return;
+      }
+      const KIND = { pick: ["已接听", "ok"], reject: ["已挂断", "bad"], defer: ["推迟到以后", "wait"] };
+      body.innerHTML = log.slice().reverse().map((l) => {
+        const k = KIND[l.kind] || ["记录", ""];
+        return '<div class="calllog-item t-' + (l.type || "normal") + '">' +
+          '<div class="cl-head"><span class="cl-kind ' + k[1] + '">' + k[0] + "</span>" +
+          '<span class="cl-name">' + (l.name || "—") + "</span>" +
+          '<span class="cl-when">第 ' + (l.deadline || 1) + " 期</span></div>" +
+          (l.desc ? '<div class="cl-desc">' + l.desc + "</div>" : "") +
+          "</div>";
+      }).join("");
+    },
+
     /* ==================== 道具图鉴 ==================== */
     markSeenCharms() {
       const m = this.meta;
@@ -934,6 +1125,8 @@
 
     switchCodexTab(name) {
       document.querySelectorAll("[data-codex]").forEach((t) => t.classList.toggle("active", t.dataset.codex === name));
+      const lg = $("codex-legend");
+      if (lg) lg.classList.toggle("hidden", name !== "charms");
       $("codex-charms").classList.toggle("hidden", name !== "charms");
       $("codex-cards").classList.toggle("hidden", name !== "cards");
       CP.Fx.codex($(name === "cards" ? "codex-cards" : "codex-charms"));
@@ -948,39 +1141,60 @@
         return (RANK[da.rarity] || 0) - (RANK[db.rarity] || 0) || da.name.localeCompare(db.name, "zh");
       });
       let got = 0;
+      const totalByR = {};
+      const ownedIds = new Set();
+      if (this.st) {
+        for (const c of this.st.charms) ownedIds.add(c.id);
+        for (const d of this.st.drawers) if (d) ownedIds.add(d.id);
+      }
       $("codex-charms").innerHTML = ids.map((id) => {
         const d = CP.CHARMS[id];
+        const rar = d.rarity || "Common";
+        totalByR[rar] = (totalByR[rar] || 0) + 1;
         if (seen.has(id)) {
           got++;
-          const tags = [];
-          if (d.button) tags.push("⚡红按钮充能");
-          if (d.noSpace) tags.push("不占容量");
-          if (d.trigger === "random") tags.push("随机触发");
-          return '<div class="codex-item r-' + d.rarity + '">' +
-            '<div class="cx-name">' + d.name + "</div>" +
-            '<div class="cx-sub">' + (RARITY_ZH[d.rarity] || d.rarity) + " · " + d.cost + " 券" +
-            (tags.length ? " · " + tags.join("·") : "") + "</div>" +
+          return '<div class="codex-item r-' + rar + '">' +
+            '<div class="cx-top"><div class="cx-name">' + d.name + "</div>" + this.rarityChip(rar) + "</div>" +
+            '<div class="cx-sub">' + d.cost + " 券" + (d.stackable ? " · 可叠加" : " · 唯一") +
+            (ownedIds.has(id) ? " · ✅ 本局已拥有" : "") + "</div>" +
+            this.triggerTag(d) +
             '<div class="cx-desc">' + d.desc + "</div></div>";
         }
         return '<div class="codex-item locked">' +
-          '<div class="cx-name">？？？</div>' +
-          '<div class="cx-sub">' + (RARITY_ZH[d.rarity] || d.rarity) + "</div>" +
+          '<div class="cx-top"><div class="cx-name">？？？</div>' + this.rarityChip(rar) + "</div>" +
+          '<div class="cx-sub">' + d.cost + " 券</div>" +
           '<div class="cx-desc">尚未遇到——在商店、电话或抽屉中遇见它才会解锁</div></div>';
       }).join("");
+
+      // 三类触发方式 + 品质分布：让「品质差异」一眼可见
+      const legend = [
+        ["tt-passive", "∞ 被动常驻", "拿到就生效，不需要任何操作"],
+        ["tt-random", "◆ 随机触发", "每次旋转按概率自动发动"],
+        ["tt-button", "⚡ 消耗能量", "点红色按钮才发动，每次 1 格能量"],
+        ["tt-instant", "✦ 即时生效", "买到手立刻结算，不占容量"],
+      ].map((it) => '<div class="lg-item ' + it[0] + '"><b>' + it[1] + "</b><span>" + it[2] + "</span></div>").join("");
+      const rarityLine = ["Common", "Uncommon", "Rare", "Epic", "Legendary"].map((r) =>
+        totalByR[r] ? '<span class="lg-rar">' + this.rarityChip(r) + " ×" + totalByR[r] + "</span>" : ""
+      ).join("");
+      $("codex-legend").innerHTML = '<div class="lg-row">' + legend + "</div>" +
+        '<div class="lg-rars"><span>品质分布：</span>' + rarityLine + "</div>";
+
       const owned = new Set(this.meta.cards || []);
-      $("codex-cards").innerHTML = CP.MEMORY_CARDS.map((c) =>
+      const allC = CP.MEMORY_CARDS;
+      $("codex-cards").innerHTML = allC.map((c, i) =>
         owned.has(c.id)
           ? '<div class="codex-item r-' + c.rarity + '">' +
-            '<div class="cx-name">' + c.name + "</div>" +
-            '<div class="cx-sub">' + (RARITY_ZH[c.rarity] || c.rarity) + "</div>" +
+            '<div class="cx-top"><div class="cx-name">' + c.name + "</div>" + this.rarityChip(c.rarity) + "</div>" +
+            '<div class="cx-sub">第 ' + (i + 1) + " / " + allC.length + " 张</div>" +
             '<div class="cx-desc">' + c.desc + "</div>" +
             (c.dialogue ? '<div class="cx-dlg">「' + c.dialogue + "」</div>" : "") + "</div>"
-          : '<div class="codex-item locked"><div class="cx-name">？？？</div>' +
-            '<div class="cx-sub">' + (RARITY_ZH[c.rarity] || c.rarity) + "</div>" +
+          : '<div class="codex-item locked">' +
+            '<div class="cx-top"><div class="cx-name">？？？</div>' + this.rarityChip(c.rarity) + "</div>" +
+            '<div class="cx-sub">第 ' + (i + 1) + " / " + allC.length + " 张</div>" +
             '<div class="cx-desc">尚未获得——接受记忆包交易或探索结局来收集</div></div>'
       ).join("");
       $("codex-progress").textContent =
-        "符文 " + got + " / " + ids.length + " · 记忆卡 " + owned.size + " / " + CP.MEMORY_CARDS.length;
+        "符文 " + got + " / " + ids.length + " · 记忆卡 " + owned.size + " / " + allC.length;
     },
 
     /* ==================== 结局 ==================== */
@@ -1070,7 +1284,7 @@
         "<p>商店用券买<b>幸运符</b>（被动 / 随机触发 / ⚡充能三类，详见图鉴）；电话能给符文贴<b>特性</b>（贪婪、野心、执念……）；转盘符号有几率自带<b>修饰词</b>：金色=价值永久上涨、代币=立即得钱、票券、复现=图案多触发一次、电池、锁链。<b>抽屉</b>存符文不占容量，可来回倒腾。</p>" +
         "<h3>💀 尸块、钥匙与结局</h3>" +
         "<p>集齐 5 块尸块并解锁全部 4 个抽屉后，announcer 会递来钥匙：<b>白钥匙</b>（保持神圣）→ 电梯上升的好结局；<b>暗红钥匙</b>→ 门后无门的坏结局；还不上债 = 坠入深渊。死亡后抽屉遗留会变成下一位「房客」的尸块。</p>" +
-        '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）。空格键 = 拉杆；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；点击幸运符看详情/转卖/入抽屉；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
+        '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）。空格键 = 拉杆；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；点击幸运符看详情/转卖/入抽屉；HUD 的「☎ 通话记录」可以回看你接听、挂断、推迟过的每一通电话；「🔊 音效」可以一键静音；<b>同一种幸运符同时只能持有一件</b>（少数消耗品例外，会在图鉴里标「可叠加」）；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
       CP.Fx.guide();
     },
   };

@@ -131,7 +131,7 @@
       freeRestocks: 0,
       storeDiscountTemp: 0,
       // 电话
-      phone: { pending: false, options: [], picked: [], rerolls: 0, available: false, redForced: false, sacredReady: false, usedOnce: {} },
+      phone: { pending: false, options: [], picked: [], rerolls: 0, available: false, redForced: false, sacredReady: false, usedOnce: {}, log: [] },
       redTaken: false,
       sacredMode: false,
       sacredRejections: 0,
@@ -1017,11 +1017,19 @@
     return Math.max(0, price);
   };
 
+  /* 是否已持有该符文（装备中或存放于抽屉）。
+   * 默认每件符文同时只能拥有一件，只有 stackable:true 的消耗型允许叠加。 */
+  E.ownsCharm = function (st, id) {
+    if ((st.charms || []).some((c) => c.id === id)) return true;
+    return (st.drawers || []).some((c) => c && c.id === id);
+  };
+
   E.buyCharm = function (st, slot) {
     const entry = st.store[slot];
     if (!entry) return { ok: false, reason: "empty" };
     const def = CP.CHARMS && CP.CHARMS[entry.id];
     if (!def) return { ok: false, reason: "noDef" };
+    if (!def.stackable && E.ownsCharm(st, entry.id)) return { ok: false, reason: "owned" };
     const price = E.charmPrice(st, entry);
     if (st.tickets < price) return { ok: false, reason: "tickets", price };
     const d = E.derived(st);
@@ -1144,12 +1152,21 @@
     });
     if (red && !st.redTaken) {
       st.sacredRejections += 1;
+      const rc = st.phone.options.map((id) => CP.PHONE_CALL_BY_ID[id]).find((c) => c && c.type === "red") || {};
+      if (!st.phone.log) st.phone.log = [];
+      st.phone.log.push({ kind: "reject", id: rc.id || null, type: "red",
+        name: rc.name || "红色来电", desc: rc.desc || "", deadline: st.deadline, round: st.round });
       st.phone.pending = false;
       st.phone.options = [];
       E.addFeed(st, "你挂断了阴冷的电流声……（拒绝红色来电 " + st.sacredRejections + "/3）", "holy");
       if (st.sacredRejections >= 3) E.addFeed(st, "一种温暖的力量开始注视着你——神圣之路已开。", "holy");
       return st.sacredRejections;
     }
+    const fid = st.phone.options[0];
+    const fc = fid ? CP.PHONE_CALL_BY_ID[fid] : null;
+    if (!st.phone.log) st.phone.log = [];
+    st.phone.log.push({ kind: "defer", id: fid || null, type: fc ? fc.type : "normal",
+      name: fc ? fc.name : "（未接来电）", desc: fc ? fc.desc : "", deadline: st.deadline, round: st.round });
     E.addFeed(st, "电话先放到一边……");
     return 0;
   };
@@ -1160,6 +1177,9 @@
     const call = CP.PHONE_CALL_BY_ID[id];
     if (call.once && st.phone.usedOnce[id]) return null;
     st.phone.picked.push(id);
+    if (!st.phone.log) st.phone.log = [];
+    st.phone.log.push({ kind: "pick", id, type: call.type, name: call.name, desc: call.desc,
+      deadline: st.deadline, round: st.round });
     if (call.once) st.phone.usedOnce[id] = true;
     if (call.type === "red") { st.redTaken = true; st.sacredRejections = 0; }
     if (call.type === "sacred") st.sacredMode = true;
@@ -1316,6 +1336,8 @@
     const rng = makeRng(st.rngSeed);
     if (rng.restore) rng.restore(save.rngState);
     st.rng = rng;
+    st.phone = st.phone || { pending: false, options: [], picked: [], rerolls: 0, available: false, redForced: false, sacredReady: false, usedOnce: {}, log: [] };
+    if (!st.phone.log) st.phone.log = [];
     st._dDirty = true;
     return st;
   };
