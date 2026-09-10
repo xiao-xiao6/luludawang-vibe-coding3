@@ -18,6 +18,10 @@
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    // 存档支持：mulberry32 的全部内部状态就是这个 32 位累加器，
+    // 连同种子一起存下来，刷新后即可从同一位置无损续接随机序列。
+    f.state = function () { return a >>> 0; };
+    f.restore = function (s) { a = (s >>> 0) || 1; };
     return f;
   }
   const irnd = (r, a, b) => a + Math.floor(r() * (b - a + 1));
@@ -90,6 +94,7 @@
   E.newRun = function (meta, cardId, seed) {
     const st = {
       rng: makeRng(seed),
+      rngSeed: seed >>> 0,
       meta,
       cardId: CP.MEMORY_CARD_BY_ID[cardId] ? cardId : "erased",
       phase: "roundSetup",
@@ -222,18 +227,19 @@
     st.weightBonus = Object.fromEntries(CP.SYMBOLS.map((s) => [s.id, 0]));
     st.flags.holyBibleUsedThisDeadline = false;
     fx(st, "deadlineStart", {});
-    // 免费补货（赌徒特性 / 绝望搜索卡）
-    touch(st);
-    const d = E.derived(st);
-    st.freeRestocks = (d.traitCount.gambler || 0) + (st.cardId === "desperate" ? 2 : 0);
-    if (st.freeRestocks && !first) E.addFeed(st, `本期开始：+${st.freeRestocks} 次免费补货`);
-    // 商店
+    // 商店（先补货：开局/每期的货架不由免费补货次数买单）
     if (st.cardId === "firstlove" && !first) {
       st.store = [];
       E.addFeed(st, "「初恋」：本期开始时商店为空……");
     } else {
-      E.restockStore(st, true);
+      E.restockStore(st, true, true, true);
     }
+    // 免费补货（赌徒特性 / 绝望搜索卡；沿用本局尚未用完的次数）
+    touch(st);
+    const d = E.derived(st);
+    const restockGain = (d.traitCount.gambler || 0) + (st.cardId === "desperate" ? 2 : 0);
+    st.freeRestocks = (st.freeRestocks || 0) + restockGain;
+    if (restockGain && !first) E.addFeed(st, `本期开始：+${restockGain} 次免费补货`);
     // 电话（第2期起响铃）
     st.phone.available = st.deadline >= 2;
     if (st.phone.available) {
@@ -305,6 +311,8 @@
     st.sixCells = [];
     st.flags.forcedJackpot = st.flags.nextRoundJackpot || false;
     st.flags.nextRoundJackpot = false;
+    // 心碎卡：第3期起，本期最后一回合必定出现 666
+    st.flags.heartbreakLast = st.cardId === "heartbreak" && st.deadline >= 3 && st.round >= st.roundsPerDeadline;
     st.flags.extraPatterns = {};
     st.flags.ghUsesThisRound = 0;
     st.flags.charmTriggersThisRound = 0;
@@ -315,7 +323,7 @@
     const lever = st.leverCost;
     const baseSpins = st.cardId === "screen" ? 21 : 7;
     const wantSpins = mode === "fewer" ? (st.cardId === "fixation" ? 1 : 3) : (st.cardId === "fixation" ? 1 : baseSpins);
-    if (st.cardId === "fixation") spins = 1;
+    if (st.cardId === "fixation") { spins = 1; cost = Math.min(st.coins, lever); }
     else if (st.coins >= lever) { cost = lever; spins = wantSpins; }
     else if (st.coins > 0) {
       // 欠转(Underspin)：spins = floor(coins ÷ 单次旋转费用)，按次数付费
@@ -445,11 +453,12 @@
     if (st.sixCells.length === 0 && (luck.total >= 15 || st.flags.forcedJackpot)) {
       const sym = luckySym || wpick(rng, weights.filter((w) => w[1] > 0));
       for (const i of freeCells) board[i] = sym;
+      st.flags.forcedJackpot = false; // 用掉即清零，否则会每转都大满贯
     }
     // 强制图案（小星星/鼻子/眼罐）
     if (st.flags.forceHorXL) {
       const sym = board[7] || luckySym || pick(rng, CP.SYMBOLS).id;
-      for (let c = 0; c < 5; c++) { const i = 10 + c; if (!st.sixCells.includes(i)) board[i] = sym; }
+      for (let c = 0; c < 5; c++) { const i = 5 + c; if (!st.sixCells.includes(i)) board[i] = sym; }
       st.flags.forceHorXL = false;
     }
     if (st.flags.forceTri) {
@@ -544,12 +553,17 @@
   };
 
   /* =============== 666 / 999 =============== */
-  E.rollSix = function (st) {
+  /* 当前 666 概率（UI 与 rollSix 共用同一套账，避免两处各加一次） */
+  E.currentP666 = function (st) {
     const d = E.derived(st);
-    let p666 = (CP.P666_BASE + d.p666Add + (st.flags.bookShadows666 ? 0.015 : 0)) * d.p666Mult * st.p666ExtraMult;
-    if (st.cardId === "choice" && st.roundMode) p666 *= st.roundMode === "most" ? 2 : 0.5;
-    if (st.cardId === "recovery") p666 *= 2;
-    p666 = Math.min(p666, CP.P666_CAP);
+    let p = (CP.P666_BASE + d.p666Add + (st.flags.bookShadows666 ? 0.015 : 0)) * d.p666Mult * st.p666ExtraMult;
+    if (st.cardId === "choice" && st.roundMode) p *= st.roundMode === "most" ? 2 : 0.5;
+    if (st.cardId === "recovery") p *= 2;
+    return Math.min(p, CP.P666_CAP);
+  };
+
+  E.rollSix = function (st) {
+    const p666 = E.currentP666(st);
     let kind = null;
     if (st.flags.heartbreakLast && st.roundSpinNum >= st.spinsPerRound) kind = "666";
     else {
@@ -575,7 +589,7 @@
     const freeCells = [];
     for (let i = 0; i < 15; i++) if (!st.sixCells.includes(i)) freeCells.push(i);
     const cells = [];
-    const take = (i) => { if (freeCells.includes(i)) { cells.push(i); st.sixCells.push(i); freeCells.splice(freeCells.indexOf(i), 1); } };
+    const take = (i) => { if (freeCells.includes(i)) { cells.push(i); st.sixCells.push(i); st.board[i] = "six"; freeCells.splice(freeCells.indexOf(i), 1); } };
     if (kind === "666") { take(6); take(7); take(8); }
     else if (kind === "66") {
       const i = pick(st.rng, freeCells);
@@ -721,6 +735,12 @@
         } else if (mod === "ticket") {
           if (!st.freeRound) st.tickets += 1;
         } else if (mod === "battery") {
+          // 「电池」修饰词：随机给一件红按钮符文 +1 能量
+          const btns = st.charms.filter((c) => { const cd = CP.CHARMS[c.id]; return cd && cd.button; });
+          if (btns.length) {
+            const bt = pick(st.rng, btns);
+            bt.charges = Math.min(bt.maxCharges, (bt.charges || 0) + 1);
+          }
           fx(st, "batteryCharge", {});
         } else if (mod === "chain") {
           st.patValues[r.id] = (st.patValues[r.id] || PB[r.id]) + PB[r.id];
@@ -744,7 +764,7 @@
       c.charges -= 1;
       for (let t = 0; t < times; t++) {
         if (def.hooks && def.hooks.button) {
-          try { def.hooks.button(c, st, { events }); } catch (e) { /* 单件符文异常不致命 */ }
+          try { def.hooks.button(c, st, { events }); } catch (e) { console.warn("[charm] " + c.id + " 的 button 钩子异常", e); }
         }
       }
       triggered.push(c.id);
@@ -768,7 +788,8 @@
     // 券
     if (st.freeRound) out.tickets = 1;
     else {
-      let t = st.roundMode === "fewer" ? CP.TICKETS_FEWER : CP.TICKETS_MOST;
+      // 执念卡每回合只有 1 次旋转，若再按「少旋转」发 3 券就变成同价白送——统一按多旋转结算
+      let t = st.roundMode === "fewer" && st.cardId !== "fixation" ? CP.TICKETS_FEWER : CP.TICKETS_MOST;
       if (st.cardId === "screen") t *= 2;
       if (st.cardId === "cold") t = 0;
       t = Math.floor(t * (st.flags.evilDeal ? 2 : 1));
@@ -786,7 +807,7 @@
     // 衰减符文（私教/电工/算命）
     fx(st, "roundEnd", out);
     // D6 免费补货
-    if (st.charms.some((c) => c.id === "d6")) E.restockStore(st, true, true);
+    if (st.charms.some((c) => c.id === "d6")) E.restockStore(st, true, true, true);
     // D20 替换抽屉
     if (st.charms.some((c) => c.id === "d20")) {
       for (let i = 0; i < st.drawersUnlocked; i++) {
@@ -954,9 +975,9 @@
   };
 
   /* =============== 商店 =============== */
-  E.restockStore = function (st, free, silent) {
+  E.restockStore = function (st, free, silent, noFreeSpend) {
     const isFree = free === true;
-    if (isFree && st.freeRestocks > 0) st.freeRestocks -= 1;
+    if (isFree && !noFreeSpend && st.freeRestocks > 0) st.freeRestocks -= 1;
     let cost = 0;
     if (!isFree) {
       cost = Math.ceil(st.baseRestockCost * Math.pow(CP.RESTOCK_GROWTH, st.storeRestockUses));
@@ -989,7 +1010,7 @@
     const d = E.derived(st);
     let price = def.cost;
     price -= st.storeDiscountTemp || 0;
-    if (st.charms.some((c) => c.id === "fidelity")) price -= 1;
+    if (st.charms.some((c) => c.id === "fidelity_card")) price -= 1;
     if (st.cardId === "sacrifices") price -= 1;
     if (entry.trait) price += CP.TRAITS[entry.trait].cost;
     if (entry.id === "cigarettes") price += (st.flags.cigPrice || 0);
@@ -1013,13 +1034,13 @@
     }
     st.tickets -= price;
     st.stats.purchases += 1;
+    st.store.splice(slot, 1); // 先移出货架：instant 类符文（幸运饼干）会整架换新
     const inst = CP.CharmFx.makeInstance(st, entry.id, false, entry.trait);
     if (!def.cadaver && !def.disposable) st.charms.push(inst);
-    st.store.splice(slot, 1);
     // 香烟特殊逻辑
     if (entry.id === "cigarettes") {
       st.flags.cigPrice = (st.flags.cigPrice || 0) + 1;
-      E.restockStore(st, true, true);
+      E.restockStore(st, true, true, true);
       st.store.unshift({ id: "cigarettes", trait: null, free: false });
     }
     fx(st, "purchase", { charm: inst, def, price });
@@ -1267,6 +1288,36 @@
       }
     }
     return st.ending;
+  };
+
+  /* =============== 局内存档（刷新续玩） ===============
+   * 引擎已是纯数据架构，唯一不可序列化的是 rng 闭包；
+   * 存下 (种子, 累加器) 即可无损还原整局。 */
+  E.SAVE_VERSION = 1;
+  E.serialize = function (st) {
+    if (!st) return null;
+    const data = {};
+    for (const k in st) {
+      if (k === "rng" || k === "meta" || k === "_d" || k === "_dDirty") continue;
+      data[k] = st[k];
+    }
+    return {
+      v: E.SAVE_VERSION,
+      seed: st.rngSeed >>> 0,
+      rngState: st.rng && st.rng.state ? st.rng.state() : 1,
+      st: data,
+    };
+  };
+  E.deserialize = function (save, meta) {
+    if (!save || save.v !== E.SAVE_VERSION || !save.st) return null;
+    const st = save.st;
+    st.meta = meta;
+    st.rngSeed = save.seed >>> 0;
+    const rng = makeRng(st.rngSeed);
+    if (rng.restore) rng.restore(save.rngState);
+    st.rng = rng;
+    st._dDirty = true;
+    return st;
   };
 
   /* =============== 工具 =============== */

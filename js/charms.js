@@ -74,7 +74,8 @@
   function catCharm(id, name, rarity, cost, n, mult, unlock) {
     def(id, name, rarity, cost,
       `每次旋转触发 ${n}+ 个图案时，获得 ${mult === 1 ? "" : mult + " 倍 "}当前利息的金币。`, {
-      unlock,
+      unlock: unlock || undefined,
+      base: !unlock, // 无解锁条件的猫（幸运猫）必须进基础池，否则永远刷不出来
       hooks: {
         spinEnd(c, st, ctx) {
           if (ctx.free || ctx.scored.length < n) return;
@@ -612,7 +613,7 @@
   /* ============ 666系 ============ */
   def("book_of_shadows", "暗影之书", "Rare", 2, "666概率 +1.5%；出现666时获得额外旋转 +3/+2/+1/+0（回合内递减）。", {
     unlock: (m) => (m.stats.sixes || 0) >= 5,
-    hooks: { derived(c, st, d) { d.p666Add += 0.015; } },
+    hooks: {}, // +1.5% 由 engine 的 bookShadows666 旗标统一结算，避免同一份加成被算两遍
   });
   def("expired_meds", "过期药物", "Uncommon", 1, "当前最贵符号的出现率为 0%。", {
     unlock: (m) => (m.stats.spins || 0) >= 300,
@@ -878,7 +879,7 @@
         f: {},
       };
       if (d.trigger === "instant" && d.instant) {
-        try { d.instant(st, inst); } catch (e) { /* 即时效果异常不致命 */ }
+        try { d.instant(st, inst); } catch (e) { console.warn("[charm] " + id + " 即时效果异常", e); }
       }
       return inst;
     },
@@ -932,13 +933,13 @@
       for (const c of list) {
         const d = CH[c.id];
         if (!d || !d.hooks || !d.hooks[hook]) continue;
-        try { d.hooks[hook](c, st, ctx); out.push(c.id); } catch (e) { /* 单件符文异常不致命 */ }
+        try { d.hooks[hook](c, st, ctx); out.push(c.id); } catch (e) { console.warn("[charm] " + c.id + " 的 " + hook + " 钩子异常", e); }
       }
       if (hook === "spinEnd") {
         for (const c of st.charms.slice()) {
           const d = CH[c.id];
           if (d && d.hooks && d.hooks.spinEndLate) {
-            try { d.hooks.spinEndLate(c, st, ctx); } catch (e) {}
+            try { d.hooks.spinEndLate(c, st, ctx); } catch (e) { console.warn("[charm] " + c.id + " 的 spinEndLate 钩子异常", e); }
           }
         }
       }

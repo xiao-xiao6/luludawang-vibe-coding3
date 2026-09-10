@@ -57,7 +57,7 @@
     "💀 666：本回合所得全部没收",
     "💎 大满贯 = 15 格同符号",
     "☠ 逾期 3 回合，地板打开",
-    "🏦 存款生息，最高 16%",
+    "🏦 存款生息：基础 7%，投资卡最高再 +16%",
     "🔥 债务阶梯 75 → 666 → 12500 → 2×10²²",
     "🗝 集齐 5 块尸块，换一把钥匙",
     "😇 连续挂断红色来电 ×3，666 化为 999",
@@ -110,6 +110,8 @@
 
   /* ---------------- 通用 ---------------- */
   Fx.screen = safe(function (id) {
+    // 离开标题页时停掉跑马灯的无限 tween，别让它在 display:none 上白烧 CPU
+    if (id !== "screen-title" && Fx._mq) Fx._mq.pause();
     const el = $id(id);
     if (!el) return;
     gsap.fromTo(el, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.38, clearProps: "transform,opacity,visibility" });
@@ -220,6 +222,52 @@
       { autoAlpha: 0, y: 14, stagger: 0.05, delay: 0.35, duration: 0.4, clearProps: "transform,opacity,visibility" });
     if (kind === "death") { shake(13); flash("255, 50, 40", 0.3); }
     else if (kind === "good") { flash("255, 240, 190", 0.35); coinRain(14); }
+  });
+
+  /* ---------------- 修饰词 / 幸运格强调 ---------------- */
+  Fx.modPop = safe(function (grid) {
+    if (!grid) return;
+    const dots = grid.querySelectorAll(".slot-cell .mod");
+    if (dots.length) gsap.from(dots, { scale: 0, duration: 0.42, ease: "back.out(3.2)", stagger: 0.03, clearProps: "scale" });
+  });
+
+  Fx.luckPulse = safe(function (grid) {
+    if (!grid) return;
+    const cells = grid.querySelectorAll(".slot-cell.lucky");
+    if (cells.length) {
+      gsap.fromTo(cells, { boxShadow: "0 0 0 rgba(255,220,120,0)" },
+        { boxShadow: "0 0 15px rgba(255,220,120,.6)", duration: 0.42, yoyo: true, repeat: 1, clearProps: "boxShadow" });
+    }
+  });
+
+  /* ---------------- 阶段横幅 ---------------- */
+  Fx.banner = safe(function (text, cls) {
+    if (!text) return;
+    const el = document.createElement("div");
+    el.className = "fx-banner" + (cls ? " " + cls : "");
+    el.textContent = text;
+    document.body.appendChild(el);
+    gsap.timeline({ onComplete: () => el.remove() })
+      .fromTo(el, { autoAlpha: 0, scale: 0.82 }, { autoAlpha: 1, scale: 1, duration: 0.34, ease: "back.out(1.8)" })
+      .to(el, { autoAlpha: 0, scale: 0.96, duration: 0.38, delay: 0.75 });
+  });
+
+  /* ---------------- 标签页切换 / 连击飘字 ---------------- */
+  Fx.tabIn = safe(function (el) {
+    if (el && el.children.length) {
+      gsap.from(el.children, { autoAlpha: 0, y: 8, duration: 0.3, stagger: 0.025, clearProps: "transform,opacity,visibility" });
+    }
+  });
+
+  Fx.combo = safe(function (n) {
+    if (!n || n < 3) return;
+    const el = document.createElement("div");
+    el.className = "fx-combo";
+    el.textContent = n + " 连击！";
+    document.body.appendChild(el);
+    gsap.timeline({ onComplete: () => el.remove() })
+      .fromTo(el, { autoAlpha: 0, scale: 0.5, y: 10 }, { autoAlpha: 1, scale: 1, y: 0, duration: 0.32, ease: "back.out(2.2)" })
+      .to(el, { autoAlpha: 0, y: -26, duration: 0.5, delay: 0.42 });
   });
 
   globalThis.CP = globalThis.CP || {};
