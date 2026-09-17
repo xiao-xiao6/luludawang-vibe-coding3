@@ -121,6 +121,11 @@
       this.loadMeta();
       try { if (localStorage.getItem("cloverpit_mute_v1") === "1") Sfx.setMuted(true); } catch (e) { /* 忽略 */ }
       this.bind();
+      // 关页 / 切后台时立即落盘：scheduleSave 有 400ms 防抖，不加钩子会丢掉最后一次操作
+      window.addEventListener("pagehide", () => this.saveRun());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") this.saveRun();
+      });
       this.syncSoundButton();
       this.showScreen("screen-title");
       this.renderTitle();
@@ -213,6 +218,7 @@
         const t = ev.target;
         if (!t || !t.closest) return;
         if (t.closest(".charm-card, .mem-card, .phone-opt, .drawer-slot")) return;
+        if (t.closest("button")) return; // 按钮自带的 title 交给浏览器悬停提示，别叠气泡
         const el = t.closest("[data-tip], [title]");
         if (!el) return;
         const text = el.getAttribute("data-tip") || el.getAttribute("title");
@@ -245,7 +251,7 @@
       $("btn-guide-back").onclick = () => this.showScreen("screen-title");
       $("btn-codex").onclick = () => this.openCodex("charms");
       $("btn-codex-game").onclick = () => this.openCodex("charms");
-      $("btn-codex-close").onclick = () => $("modal-codex").classList.add("hidden");
+      $("btn-codex-close").onclick = () => this.hideModal("modal-codex");
       document.querySelectorAll("[data-codex]").forEach((t) => {
         t.onclick = () => this.switchCodexTab(t.dataset.codex);
       });
@@ -268,21 +274,80 @@
       $("btn-phone-later").onclick = () => this.deferPhone();
       $("btn-phone-log").onclick = () => this.openCallLog();
       $("btn-calllog").onclick = () => this.openCallLog();
-      $("btn-calllog-close").onclick = () => $("modal-calllog").classList.add("hidden");
+      $("btn-calllog-close").onclick = () => this.hideModal("modal-calllog");
       $("btn-sound").onclick = () => this.toggleSound();
-      $("btn-charm-close").onclick = () => $("modal-charm").classList.add("hidden");
+      $("btn-charm-close").onclick = () => this.hideModal("modal-charm");
       $("btn-charm-sell").onclick = () => this.sellSelected();
       $("btn-charm-drawer").onclick = () => this.drawerSelected();
       $("btn-summary-ok").onclick = () => {
-        $("modal-summary").classList.add("hidden");
+        this.hideModal("modal-summary");
         if (this.st && this.st.phone.pending) this.openPhone();
       };
       document.addEventListener("keydown", (ev) => {
+        // Esc：关闭最上层弹窗，焦点还原到打开它的按钮
+        if (ev.key === "Escape") {
+          const top = this.topModal();
+          if (top) { ev.preventDefault(); this.hideModal(top); return; }
+        }
+        // Tab：弹窗打开时把焦点锁在弹窗内循环，别跑到背后的页面上
+        if (ev.key === "Tab") {
+          const top = this.topModal();
+          if (top) {
+            const box = $(top).querySelector(".modal-box") || $(top);
+            const items = Array.prototype.slice.call(box.querySelectorAll(
+              "button:not(:disabled), [tabindex='0'], input:not(:disabled), select, textarea, a[href]"
+            ));
+            if (items.length) {
+              const first = items[0], last = items[items.length - 1];
+              const act = document.activeElement;
+              if (!box.contains(act)) { ev.preventDefault(); first.focus(); }
+              else if (ev.shiftKey && act === first) { ev.preventDefault(); last.focus(); }
+              else if (!ev.shiftKey && act === last) { ev.preventDefault(); first.focus(); }
+            }
+          }
+        }
+        // 回车 / 空格：激活 role=button 的 div 型可点元素（读屏与纯键盘用户）
+        if ((ev.key === "Enter" || ev.code === "Space") && ev.target && ev.target.getAttribute &&
+            ev.target.getAttribute("role") === "button") {
+          ev.preventDefault();
+          ev.target.click();
+          return;
+        }
         if (ev.code === "Space" && this.st && this.st.phase === "spinning" && !this.spinning && !this.animating) {
+          // 焦点在按钮/输入上时，空格属于那个控件（原生激活），不该被拉杆抢走
+          const t = ev.target;
+          if (t && t.closest && t.closest("button, input, select, textarea, [contenteditable], [role='button']")) return;
           ev.preventDefault();
           this.doSpin();
         }
       });
+    },
+
+    /* ---------------- 弹窗统一开关：焦点还原 + 焦点进入 + Esc 关闭 ---------------- */
+    _modalStack: [],
+    showModal(id) {
+      const m = $(id);
+      if (!m) return;
+      this.lastFocus = document.activeElement && document.activeElement !== document.body
+        ? document.activeElement : this.lastFocus;
+      m.classList.remove("hidden");
+      this._modalStack = this._modalStack.filter((x) => x !== id);
+      this._modalStack.push(id);
+      const first = m.querySelector("button:not(:disabled), [tabindex='0'], input, select, textarea");
+      if (first && first.focus) { try { first.focus({ preventScroll: true }); } catch (e) { /* 忽略 */ } }
+      CP.Fx.modal(id);
+    },
+    hideModal(id) {
+      const m = $(id);
+      if (!m) return;
+      m.classList.add("hidden");
+      this._modalStack = this._modalStack.filter((x) => x !== id);
+      const back = this.lastFocus;
+      this.lastFocus = null;
+      if (back && back.focus) { try { back.focus({ preventScroll: true }); } catch (e) { /* 忽略 */ } }
+    },
+    topModal() {
+      return this._modalStack.length ? this._modalStack[this._modalStack.length - 1] : null;
     },
 
     showScreen(id) {
@@ -318,6 +383,8 @@
         if (!c) continue;
         const div = document.createElement("div");
         div.className = "mem-card r-" + c.rarity;
+        div.setAttribute("tabindex", "0");
+        div.setAttribute("role", "button");
         div.innerHTML =
           '<div class="mc-name">' + c.name + "</div>" +
           '<div class="mc-desc">' + c.desc + "</div>" +
@@ -477,7 +544,7 @@
       const pb = $("pack-banner");
       if (st.packOffer) {
         pb.classList.remove("hidden");
-        pb.innerHTML = "📦 announcer 提议：结清本期换取 <b>" + st.packOffer.count + '</b> 个记忆包 <button id="btn-pack" class="btn btn-mini btn-amber">接受</button>';
+        pb.innerHTML = "📦 announcer 提议：结清本期换取 <b>" + st.packOffer.count + '</b> 个记忆包 <button type="button" id="btn-pack" class="btn btn-mini btn-amber">接受</button>';
         $("btn-pack").onclick = () => {
           if (E.acceptPack(st)) this.showDeadlineSummary();
           this.renderAll();
@@ -494,8 +561,11 @@
       }).length;
       $("charm-count").textContent = used + " / " + d.charmSpace;
       const row = $("charm-row");
-      row.innerHTML = st.charms.map((c) => this.charmCardHTML(c)).join("") ||
-        '<div class="dim small">（还没有装备任何幸运符——去商店看看吧）</div>';
+      const empty = !st.charms.length;
+      row.classList.toggle("empty", empty);
+      row.innerHTML = empty
+        ? '<div class="charm-empty"><span>⌂</span>幸运符栏空着——去下面的商店买一件吧 ↓</div>'
+        : st.charms.map((c) => this.charmCardHTML(c)).join("");
       row.querySelectorAll(".charm-card").forEach((el) => {
         el.onclick = () => this.openCharm(parseInt(el.dataset.uid, 10));
       });
@@ -540,7 +610,8 @@
         const pct = (c.charges / Math.max(1, c.maxCharges)) * 100;
         charge = '<div class="chg"><i style="width:' + pct + '%"></i></div><span class="chg-n">⚡' + c.charges + "/" + c.maxCharges + "</span>";
       }
-      return '<div class="charm-card r-' + (def.rarity || "Common") + '" data-uid="' + c.uid + '" title="' + (def.desc || "").replace(/"/g, "'") + '">' +
+      return '<div class="charm-card r-' + (def.rarity || "Common") + '" data-uid="' + c.uid +
+        '" tabindex="0" role="button" title="' + (def.desc || "").replace(/"/g, "'") + '">' +
         '<div class="cc-top"><div class="cc-name">' + (def.name || c.id) + "</div>" + this.rarityChip(def.rarity) + "</div>" +
         this.triggerTag(def) +
         (trait ? '<div class="cc-trait" style="color:' + trait.color + '">' + trait.name + "</div>" : "") +
@@ -568,7 +639,8 @@
       const price = E.charmPrice(this.st, entry);
       const trait = entry.trait ? CP.TRAITS[entry.trait] : null;
       const owned = !def.stackable && E.ownsCharm(this.st, entry.id);
-      return '<div class="charm-card store-card r-' + (def.rarity || "Common") + (owned ? " owned" : "") + '" data-slot="' + i + '">' +
+      return '<div class="charm-card store-card r-' + (def.rarity || "Common") + (owned ? " owned" : "") +
+        '" data-slot="' + i + '" tabindex="0" role="button" title="' + (def.desc || "").replace(/"/g, "'") + '">' +
         '<div class="cc-top"><div class="cc-name">' + (def.name || entry.id) + "</div>" + this.rarityChip(def.rarity) + "</div>" +
         this.triggerTag(def) +
         (trait ? '<div class="cc-trait" style="color:' + trait.color + '">' + trait.name + "</div>" : "") +
@@ -588,7 +660,7 @@
         } else {
           const c = st.drawers[i];
           html += c
-            ? '<div class="drawer-slot filled" data-slot="' + i + '">' + this.charmCardHTML(c) + "</div>"
+            ? '<div class="drawer-slot filled" data-slot="' + i + '" tabindex="0" role="button">' + this.charmCardHTML(c) + "</div>"
             : '<div class="drawer-slot">抽屉 ' + (i + 1) + '<br><span class="dim small">空</span></div>';
         }
       }
@@ -786,9 +858,10 @@
         }
         html += '<div class="patterns-line">' + res.scored.map((r) => r.name + "×" + r.triggers).join(" · ") + "</div>";
         CP.Fx.combo(res.scored.length);
-        Sfx.win(res.scored.length, res.jackpot);
-        // 赚多赚少，音效与演出都不一样
+        // 金额浮空演出（见 fx.js）承担“中奖的兴奋”，HUD 的 +N 只当计数
         const scale = st.debt > 0 ? res.payout / st.debt : 0;
+        if (scale < 0.2) Sfx.smallWin();
+        else Sfx.win(res.scored.length, res.jackpot);
         Sfx.coin(Math.max(1, Math.min(8, Math.round(1 + scale * 14))));
         if (res.jackpot) {
           html += '<div class="jackpot-text">★ 大 满 贯 ★</div>';
@@ -894,11 +967,10 @@
       rows.push("—— 第 " + st.deadline + " 期 · 债务 " + CP.fmt(st.debt) + " ——");
       $("summary-title").textContent = "第 " + (st.deadline - 1) + " 期已偿还";
       $("summary-body").innerHTML = rows.map((r) => '<div class="sum-row">' + r + "</div>").join("");
-      $("modal-summary").classList.remove("hidden");
-      CP.Fx.modal("modal-summary");
       CP.Fx.banner("第 " + st.deadline + " 期", "danger");
       Sfx.coin();
       this.renderAll();
+      this.showModal("modal-summary");
     },
 
     /* ==================== 存款/商店/抽屉 ==================== */
@@ -934,14 +1006,29 @@
       if (!st) return;
       const r = E.buyCharm(st, i);
       if (r.ok) {
-        this.feed("购买了 " + CP.CHARMS[r.charm.id].name + "（" + r.price + " 券）", "good");
+        this.feed("购买了 " + CP.CHARMS[r.charm.id].name + "（" + r.price + " 券）" + (r.instant ? " · 已即时生效" : ""), "good");
         Sfx.coin();
         this.markSeenCharms();
-        CP.Fx.pop($("charm-row").lastElementChild);
-      } else if (r.reason === "tickets") this.feed("幸运券不够……", "warn");
-      else if (r.reason === "space") this.feed("符文容量已满！先转卖或收进抽屉吧", "warn");
+        this.renderAll();
+        // instant 类不入装备栏，所以弹跳要落在商店位上，而不是栏尾
+        CP.Fx.pop(document.querySelector('.store-card.owned, .store-card[data-slot="' + i + '"]') || $("charm-row").lastElementChild);
+        return;
+      }
+      if (r.reason === "tickets") this.feed("幸运券不够……", "warn");
       else if (r.reason === "owned") this.feed("已经拥有这件符文了——同一种符文同时只能持有一件", "warn");
       this.renderAll();
+      // 容量满：除日志外，直接在卡片上抖一下 + 红描边，不让玩家切页去找原因
+      if (r.reason === "space") {
+        this.feed("符文容量已满！先转卖或收进抽屉吧", "warn");
+        this.denyCard(i);
+      }
+    },
+
+    denyCard(i) {
+      const el = document.querySelector('.store-card[data-slot="' + i + '"]');
+      if (!el) return;
+      el.classList.add("store-deny");
+      setTimeout(() => el.classList.remove("store-deny"), 560);
     },
 
     openCharm(uid) {
@@ -964,15 +1051,14 @@
         '<div class="cd-sell">转卖可得：' + sellGain + " 券</div>";
       $("btn-charm-sell").disabled = !!def.cadaver;
       $("btn-charm-drawer").disabled = !st.drawers.some((x, i) => i < st.drawersUnlocked && !x);
-      $("modal-charm").classList.remove("hidden");
-      CP.Fx.modal("modal-charm");
+      this.showModal("modal-charm");
     },
 
     sellSelected() {
       const st = this.st;
       const r = E.discardCharm(st, this.selCharmUid, true);
       if (r) this.feed("转卖了 " + CP.CHARMS[r.charm.id].name + "（+" + r.gain + " 券）");
-      $("modal-charm").classList.add("hidden");
+      this.hideModal("modal-charm");
       this.renderAll();
     },
 
@@ -982,7 +1068,7 @@
       if (slot >= 0 && E.toDrawer(st, this.selCharmUid, slot)) {
         this.feed("把 " + CP.CHARMS[st.drawers[slot].id].name + " 放进了抽屉 #" + (slot + 1));
       }
-      $("modal-charm").classList.add("hidden");
+      this.hideModal("modal-charm");
       this.renderAll();
     },
 
@@ -1019,6 +1105,8 @@
         if (!c) return;
         const div = document.createElement("div");
         div.className = "phone-opt t-" + c.type;
+        div.setAttribute("tabindex", "0");
+        div.setAttribute("role", "button");
         div.innerHTML =
           '<div class="opt-name">' + c.name + "</div>" +
           '<div class="opt-desc">' + c.desc + "</div>" +
@@ -1028,9 +1116,8 @@
       });
       $("btn-phone-later").textContent = type === "red" ? "✖ 挂断（拒绝红色来电）" : "等会儿再说";
       this.renderRerollBtn();
-      $("modal-phone").classList.remove("hidden");
       CP.Fx.callFlash(type);
-      CP.Fx.modal("modal-phone");
+      this.showModal("modal-phone");
     },
 
     renderRerollBtn() {
@@ -1064,19 +1151,22 @@
 
     deferPhone() {
       const st = this.st;
-      if (st && E.deferPhone(st)) this.renderAll();
+      // 返回值已统一成 { ok, kind, count }：旧版普通来电返回 0（falsy）会让 renderAll 被跳过，
+      // 于是「等会儿再说」后日志页不刷新，要等下一次操作才补上。
+      const r = st ? E.deferPhone(st) : null;
+      if (r && r.ok && r.resp) this.feed("「" + r.resp + "」", "charm");
       this.closePhone();
+      if (r && r.ok) this.renderAll();
     },
 
     closePhone() {
-      $("modal-phone").classList.add("hidden");
+      this.hideModal("modal-phone");
     },
 
     /* ==================== 通话记录 ==================== */
     openCallLog() {
       this.renderCallLog();
-      $("modal-calllog").classList.remove("hidden");
-      CP.Fx.modal("modal-calllog");
+      this.showModal("modal-calllog");
     },
 
     renderCallLog() {
@@ -1096,6 +1186,7 @@
           '<span class="cl-name">' + (l.name || "—") + "</span>" +
           '<span class="cl-when">第 ' + (l.deadline || 1) + " 期</span></div>" +
           (l.desc ? '<div class="cl-desc">' + l.desc + "</div>" : "") +
+          (l.resp ? '<div class="cl-resp">「' + l.resp + '」</div>' : "") +
           "</div>";
       }).join("");
     },
@@ -1118,9 +1209,8 @@
 
     openCodex(tab) {
       this.renderCodex();
-      $("modal-codex").classList.remove("hidden");
       this.switchCodexTab(tab || "charms");
-      CP.Fx.modal("modal-codex");
+      this.showModal("modal-codex");
     },
 
     switchCodexTab(name) {
@@ -1156,6 +1246,7 @@
           return '<div class="codex-item r-' + rar + '">' +
             '<div class="cx-top"><div class="cx-name">' + d.name + "</div>" + this.rarityChip(rar) + "</div>" +
             '<div class="cx-sub">' + d.cost + " 券" + (d.stackable ? " · 可叠加" : " · 唯一") +
+            (d.noSpace ? " · 不占容量" : "") +
             (ownedIds.has(id) ? " · ✅ 本局已拥有" : "") + "</div>" +
             this.triggerTag(d) +
             '<div class="cx-desc">' + d.desc + "</div></div>";
@@ -1209,14 +1300,12 @@
       this.clearRun();
       CP.CharmFx.mergeStats(this.meta, st);
       const newly = CP.CharmFx.updateUnlocks(this.meta);
-      if (ending === "death") this.meta.deaths = (this.meta.deaths || 0) + 1;
       this.saveMeta();
       this.showEnd(ending, newly);
     },
 
     showEnd(ending, newly) {
       this.showScreen("screen-end");
-      CP.Fx.end(ending);
       const st = this.st;
       const card = $("end-card");
       const stats =
@@ -1231,7 +1320,10 @@
       const unl = newly && newly.length
         ? '<div class="end-unlock">✨ 新解锁符文：' + newly.join("、") + "</div>"
         : "";
-      const btn = '<button id="btn-end-back" class="btn btn-amber">返回标题</button>';
+      const btn = '<div class="end-actions">' +
+        '<button id="btn-end-again" class="btn btn-amber">↻ 再来一局</button>' +
+        '<button id="btn-end-back" class="btn">返回标题</button>' +
+        "</div>";
       if (ending === "death") {
         card.innerHTML =
           '<div class="end-title evil">你 坠 入 了 深 渊</div>' +
@@ -1251,11 +1343,18 @@
           stats + unl + btn;
         Sfx.holy();
       }
+      $("btn-end-again").onclick = () => { this.st = null; this.showCardSelect(); };
       $("btn-end-back").onclick = () => {
+        this.st = null;
         this.showScreen("screen-title");
         this.renderTitle();
         this.refreshContinue();
       };
+      // 新符文解锁是长线正反馈的高光时刻，之前 Sfx.unlock 定义后从未被调用
+      if (newly && newly.length) Sfx.unlock();
+      // 动效必须在 innerHTML 写入之后调用：旧版先跑 CP.Fx.end 再写 innerHTML，
+      // GSAP 根本找不到 .end-title/.end-text，整段结局演出静默失效并刷警告。
+      CP.Fx.end(ending);
     },
 
     /* ==================== 指南 ==================== */
@@ -1273,7 +1372,7 @@
         "<h3>✨ 幸运值</h3>" +
         "<p>每次旋转随机产生 0~15 点幸运：把等量格子强制变成同一符号，<b>15 点 = 保底大满贯</b>。连续空转会触发机器的「怜悯」（橡皮筋加成），幸运值悄悄上涨。</p>" +
         "<h3>🟥 红色按钮（重要！）</h3>" +
-        "<p>很多幸运符带 <b>⚡充能</b>标记——它们平时不生效，只有点<b>红色按钮</b>才触发，每次消耗 1 格能量。能量在<b>每个回合结算时自动 +1</b>（部分符文例外）。正确节奏：先按红按钮蓄力，再拉杆！点按钮本身免费。</p>" +
+        "<p>很多幸运符带 <b>⚡充能</b>标记——它们平时不生效，只有点<b>红色按钮</b>才触发，每次消耗 1 格能量。能量在<b>每个回合结算时自动 +1</b>（部分符文例外）。正确节奏：<b>先拉杆进入旋转，再按红按钮</b>——红按钮只在旋转阶段可点，点按钮本身免费。</p>" +
         "<h3>🏦 ATM、利息与幸运券</h3>" +
         "<p>金币分两种去处：<b>存入 ATM</b> 的钱按回合生息（基础 7%），是还债专用；<b>身上</b>的金币用于拉杆与补货。<b>尽早存钱吃利息！</b><b>幸运券</b>（绿色）是买幸运符的货币，回合结算、少旋转、提前结束本期都会给。</p>" +
         "<h3>☎ 电话</h3>" +
@@ -1284,7 +1383,7 @@
         "<p>商店用券买<b>幸运符</b>（被动 / 随机触发 / ⚡充能三类，详见图鉴）；电话能给符文贴<b>特性</b>（贪婪、野心、执念……）；转盘符号有几率自带<b>修饰词</b>：金色=价值永久上涨、代币=立即得钱、票券、复现=图案多触发一次、电池、锁链。<b>抽屉</b>存符文不占容量，可来回倒腾。</p>" +
         "<h3>💀 尸块、钥匙与结局</h3>" +
         "<p>集齐 5 块尸块并解锁全部 4 个抽屉后，announcer 会递来钥匙：<b>白钥匙</b>（保持神圣）→ 电梯上升的好结局；<b>暗红钥匙</b>→ 门后无门的坏结局；还不上债 = 坠入深渊。死亡后抽屉遗留会变成下一位「房客」的尸块。</p>" +
-        '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）。空格键 = 拉杆；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；点击幸运符看详情/转卖/入抽屉；HUD 的「☎ 通话记录」可以回看你接听、挂断、推迟过的每一通电话；「🔊 音效」可以一键静音；<b>同一种幸运符同时只能持有一件</b>（少数消耗品例外，会在图鉴里标「可叠加」）；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
+        '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）。空格键 = 拉杆（焦点在按钮上时空格属于那个按钮）；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；点击幸运符看详情/转卖/入抽屉；HUD 的「☎ 通话记录」可以回看你接听、挂断、推迟过的每一通电话（含对方的回应）；「🔊 音效」可以一键静音；弹窗按 Esc 或点关闭即可收起；<b>同一种幸运符同时只能持有一件</b>（不占容量的消耗品会在图鉴里标「可叠加」，买到即生效、不进装备栏）；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
       CP.Fx.guide();
     },
   };

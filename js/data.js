@@ -116,6 +116,7 @@
     { debt: 1.44e8,  lever: 1260, restock: 9e6 },
     { debt: 1.38e10, lever: 1386, restock: 8.64e8 },
     { debt: 2e13,    lever: 1500, restock: 1.3e12 },
+    // 第14期拉杆费从 1500 掉到 546：这是照抄官方费用表，不是笔误，请勿「顺手修正」
     { debt: 2e17,    lever: 546,  restock: 1.27e16 },
     { debt: 2e22,    lever: 588,  restock: 5.41e20 },
   ];
@@ -293,14 +294,5 @@
       }
     }
     return Math.floor(n).toLocaleString("en-US");
-  };
-
-  /* ---------------- 提示文本 ---------------- */
-  CP.TIP = {
-    mostSpins: "多旋转（7次）",
-    fewerSpins: "少旋转（3次·更多券）",
-    lever: "拉下拉杆",
-    redButton: "红色按钮",
-    deposit: "存入金币",
   };
 })();

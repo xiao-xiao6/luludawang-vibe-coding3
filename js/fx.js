@@ -147,14 +147,8 @@
       { scaleY: 1, scaleX: 1, duration: 0.4, ease: "elastic.out(1, 0.45)", clearProps: "transform" });
   });
 
-  Fx.spinTick = safe(function (cells) {
-    for (let i = 0; i < cells.length; i++) {
-      const c = cells[i];
-      if (c.classList.contains("six")) continue;
-      gsap.set(c, { rotation: (Math.random() - 0.5) * 12, scale: 0.93, y: (Math.random() - 0.5) * 3 });
-    }
-  });
-
+  /* 注：原 Fx.spinTick 从未被调用（滚动换脸已由 CSS rollblur 承担），已删除。
+   * 中奖金额改由 spinResult 做浮空数字演出。 */
   Fx.spinResult = safe(function (res, grid, info) {
     const hits = grid ? grid.querySelectorAll(".slot-cell.hit") : [];
     if (hits.length) {
@@ -168,10 +162,31 @@
       gsap.to(obj, { v: res.payout, duration: 0.75, ease: "power1.out",
         onUpdate: () => { pay.textContent = "+" + CP.fmt(Math.round(obj.v)) + " 金币"; } });
     }
+    if (pay && res.payout > 0 && isFinite(res.payout)) {
+      floatNumber(grid, "+" + CP.fmt(res.payout), "win");
+    }
     if (res.jackpot) { flash("255, 210, 74", 0.38); shake(11); coinRain(16); }
     if (res.six && res.six.kind === "666") { shake(15); flash("255, 50, 40", 0.32); }
     if (res.six && res.six.kind === "999") { flash("255, 240, 190", 0.3); coinRain(8); }
   });
+
+  /* ---------------- 中奖浮空金额 ----------------
+   * 之前「中奖的兴奋」全靠 HUD 那行 23px 文字；
+   * 把金额做成从盘面中心向上飘散的浮空数字，HUD 的 +N 退化为纯计数。 */
+  function floatNumber(anchor, text, cls) {
+    const host = anchor || document.body;
+    const el = document.createElement("div");
+    el.className = "fx-float " + (cls || "");
+    el.textContent = text;
+    const r = host.getBoundingClientRect ? host.getBoundingClientRect() : null;
+    el.style.left = r ? (r.left + r.width / 2) + "px" : "50%";
+    el.style.top = r ? (r.top + r.height / 2) + "px" : "45%";
+    document.body.appendChild(el);
+    gsap.timeline({ onComplete: () => el.remove() })
+      .fromTo(el, { autoAlpha: 0, scale: 0.5, yPercent: -20 },
+        { autoAlpha: 1, scale: 1.12, yPercent: -90, duration: 0.34, ease: "back.out(2.2)" })
+      .to(el, { autoAlpha: 0, yPercent: -190, scale: 0.95, duration: 0.75, delay: 0.35, ease: "power1.out" });
+  }
 
   /* ---------------- 交互反馈 ---------------- */
   Fx.redButton = safe(function () {

@@ -66,7 +66,6 @@
       noRecharge: false,
       traitCount: {},
     };
-    for (const t of Object.keys(st.charms || [])) void 0;
     // 特性统计
     for (const c of st.charms || []) {
       if (c.trait) d.traitCount[c.trait] = (d.traitCount[c.trait] || 0) + 1;
@@ -323,7 +322,12 @@
     const lever = st.leverCost;
     const baseSpins = st.cardId === "screen" ? 21 : 7;
     const wantSpins = mode === "fewer" ? (st.cardId === "fixation" ? 1 : 3) : (st.cardId === "fixation" ? 1 : baseSpins);
-    if (st.cardId === "fixation") { spins = 1; cost = Math.min(st.coins, lever); }
+    if (st.cardId === "fixation") {
+      // 执念卡每回合固定 1 次旋转；身无分文时同样并入「免费回合」口径（图案不计酬、结算 +1 券）
+      spins = 1;
+      if (st.coins <= 0) { free = true; cost = 0; }
+      else cost = Math.min(st.coins, lever);
+    }
     else if (st.coins >= lever) { cost = lever; spins = wantSpins; }
     else if (st.coins > 0) {
       // 欠转(Underspin)：spins = floor(coins ÷ 单次旋转费用)，按次数付费
@@ -359,7 +363,9 @@
     let base = cl.add;
     let machine = 0;
     const notes = [];
-    const spinNum = st.spinNum + 1; // 即将执行的旋转序号
+    // E.spin 会先自增 st.spinNum 再调用 computeLuck，所以这里拿到的就是「本次旋转」的序号。
+    // 旧写法 +1 会让第 1 次旋转就吃到 ILS 加成（off-by-one）。
+    const spinNum = st.spinNum;
     if (!d.machineLuckDisabled) {
       // ILS（仅第1期）
       if (st.deadline === 1) {
@@ -615,7 +621,7 @@
         st.roundEarnings = 0;
         st.roundLost666 += removed;
         out.penalty = { type: "round", removed };
-        E.addFeed(st, `666！本期第${st.deadline}期：失去本回合赚取的 ${CP.fmt(removed)} 金币`, "evil");
+        E.addFeed(st, `666！第 ${st.deadline} 期：失去本回合赚取的 ${CP.fmt(removed)} 金币`, "evil");
       } else {
         removed = st.coins;
         st.coins = 0;
@@ -903,11 +909,13 @@
     }
     // 尸块完成 → 钥匙提议
     E.checkCadaverComplete(st);
-    if (st.cadaverCompletedAt && !st.keyOffered && st.deadline >= st.keyOfferAt) {
+    // 指南承诺：集齐 5 块尸块「并解锁全部 4 个抽屉」后 announcer 才会递钥匙——旧判定漏了抽屉数，
+    // 会让玩家 0 抽屉直接通关，跳过整条抽屉/尸块成长线。
+    if (st.cadaverCompletedAt && !st.keyOffered && st.deadline >= st.keyOfferAt && st.drawersUnlocked >= 4) {
       st.keyOffered = true;
       out.keyOffer = true;
       st.keyWhite = st.sacredMode && !st.redTaken;
-      E.addFeed(st, st.keyWhite ? " announcer 递来了一把泛白的钥匙……" : "announcer 递来了一把暗红色的钥匙……", "special");
+      E.addFeed(st, st.keyWhite ? "announcer 递来了一把泛白的钥匙……" : "announcer 递来了一把暗红色的钥匙……", "special");
     }
     // 期末抽屉尸块清理
     for (let i = 0; i < 4; i++) {
@@ -1044,7 +1052,10 @@
     st.stats.purchases += 1;
     st.store.splice(slot, 1); // 先移出货架：instant 类符文（幸运饼干）会整架换新
     const inst = CP.CharmFx.makeInstance(st, entry.id, false, entry.trait);
-    if (!def.cadaver && !def.disposable) st.charms.push(inst);
+    // instant 类在 makeInstance 里就已结算完毕：绝不能进装备栏——
+    // 否则会永久占格、卡片长期挂在栏里，还能半价反复转卖薅券。
+    const instant = def.trigger === "instant";
+    if (!def.cadaver && !def.disposable && !instant) st.charms.push(inst);
     // 香烟特殊逻辑
     if (entry.id === "cigarettes") {
       st.flags.cigPrice = (st.flags.cigPrice || 0) + 1;
@@ -1053,7 +1064,7 @@
     }
     fx(st, "purchase", { charm: inst, def, price });
     touch(st);
-    return { ok: true, charm: inst, price };
+    return { ok: true, charm: inst, price, instant };
   };
 
   E.discardCharm = function (st, uid, sell = true) {
@@ -1155,20 +1166,24 @@
       const rc = st.phone.options.map((id) => CP.PHONE_CALL_BY_ID[id]).find((c) => c && c.type === "red") || {};
       if (!st.phone.log) st.phone.log = [];
       st.phone.log.push({ kind: "reject", id: rc.id || null, type: "red",
-        name: rc.name || "红色来电", desc: rc.desc || "", deadline: st.deadline, round: st.round });
+        name: rc.name || "红色来电", desc: rc.desc || "", resp: rc.resp || null,
+        deadline: st.deadline, round: st.round });
       st.phone.pending = false;
       st.phone.options = [];
       E.addFeed(st, "你挂断了阴冷的电流声……（拒绝红色来电 " + st.sacredRejections + "/3）", "holy");
       if (st.sacredRejections >= 3) E.addFeed(st, "一种温暖的力量开始注视着你——神圣之路已开。", "holy");
-      return st.sacredRejections;
+      return { ok: true, kind: "rejected", count: st.sacredRejections, resp: rc.resp || null };
     }
     const fid = st.phone.options[0];
     const fc = fid ? CP.PHONE_CALL_BY_ID[fid] : null;
     if (!st.phone.log) st.phone.log = [];
     st.phone.log.push({ kind: "defer", id: fid || null, type: fc ? fc.type : "normal",
-      name: fc ? fc.name : "（未接来电）", desc: fc ? fc.desc : "", deadline: st.deadline, round: st.round });
+      name: fc ? fc.name : "（未接来电）", desc: fc ? fc.desc : "", resp: fc ? fc.resp : null,
+      deadline: st.deadline, round: st.round });
     E.addFeed(st, "电话先放到一边……");
-    return 0;
+    if (fc && fc.resp) E.addFeed(st, "「" + fc.resp + "」", "charm");
+    // 统一返回值语义：调用方一律看 r.ok，不再依赖 0/1 这种真假值
+    return { ok: true, kind: "deferred", count: 0, resp: fc ? fc.resp : null };
   };
 
   E.pickPhoneCall = function (st, idx) {
@@ -1179,7 +1194,7 @@
     st.phone.picked.push(id);
     if (!st.phone.log) st.phone.log = [];
     st.phone.log.push({ kind: "pick", id, type: call.type, name: call.name, desc: call.desc,
-      deadline: st.deadline, round: st.round });
+      resp: call.resp || null, deadline: st.deadline, round: st.round });
     if (call.once) st.phone.usedOnce[id] = true;
     if (call.type === "red") { st.redTaken = true; st.sacredRejections = 0; }
     if (call.type === "sacred") st.sacredMode = true;

@@ -127,10 +127,10 @@ body.evil { animation: evilflash 0.9s ease-out; }
   background: rgba(20,16,10,.6);
 }
 .title-buttons { display: flex; gap: 12px; justify-content: center; margin-bottom: 18px; }
-.title-foot { color: var(--dim); font-size: 11px; opacity: 0.7; }
+.title-foot { color: var(--amber-dim); font-size: 11px; }
 
 /* ==================== 记忆卡选择 ==================== */
-.cards-wrap { max-width: 900px; text-align: center; }
+.cards-wrap { width: 100%; max-width: 900px; text-align: center; }
 .card-grid {
   display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 16px 0 22px;
 }
@@ -198,7 +198,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(180deg, #181410, #120e0a);
   border: 1px solid #2c261e; border-radius: 5px;
-  font-size: clamp(20px, 3.2vw, 34px);
+  font-size: clamp(22px, 3.6vw, 38px);
   transition: border-color 0.15s, box-shadow 0.15s;
   user-select: none;
 }
@@ -274,7 +274,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
   box-shadow: 0 0 8px rgba(255,179,71,.5);
   transition: width 0.4s ease;
 }
-.atm-buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.atm-panel { display: flex; flex-direction: column; }
+.atm-buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; }
 .countdown {
   margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12px;
   border: 1px solid #7a2a1a; background: #2a0f0a; color: #ff8a70;
@@ -341,7 +342,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .r-Uncommon { border-color: #5c7a1a; }
 .r-Rare { border-color: #9c5722; }
 .r-Legendary { border-color: var(--gold); box-shadow: 0 0 10px rgba(232,185,60,.22); }
-.cc-name { color: var(--text); font-size: 12px; line-height: 1.3; }
+.cc-name { color: var(--text); font-size: 13px; line-height: 1.3; }
 .r-Legendary .cc-name { color: var(--gold); }
 .cc-trait { font-size: 10px; margin-top: 3px; }
 .cc-flags { font-size: 9px; color: var(--dim); margin-top: 2px; }
@@ -353,22 +354,25 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .chg-n { font-size: 9px; color: var(--dim); display: block; margin-top: 2px; }
 .cc-price { color: var(--green); margin-top: 5px; font-size: 12px; }
 .cc-desc {
-  font-size: 9.5px; color: var(--dim); margin-top: 4px; line-height: 1.4;
-  max-height: 54px; overflow: hidden; text-align: left;
+  font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.5;
+  max-height: 50px; overflow: hidden; text-align: left;
 }
-.store-card { width: 138px; }
+.store-card { width: 152px; }
 .drawer-slot {
   width: 116px; min-height: 88px; border: 1px dashed var(--line2); border-radius: 6px;
   display: flex; align-items: center; justify-content: center; text-align: center;
   color: var(--dim); font-size: 12px; padding: 4px;
 }
 .drawer-slot.filled { border-style: solid; cursor: pointer; }
-.drawer-slot.locked { opacity: 0.4; }
+.drawer-slot.locked { opacity: 0.68; }
+/* 未解锁抽屉是「抽屉系统将来会开」的关键线索，别让它隐形 */
+.drawer-slot.locked .small { color: var(--dim); opacity: 1; }
 .drawer-slot .charm-card { width: 100%; }
 
 /* ==================== 弹窗 ==================== */
 .modal {
-  position: fixed; inset: 0; background: rgba(5,4,3,.82); z-index: 80;
+  /* 必须盖在 CRT 扫描线(90) / 暗角(91) 之上，否则弹窗内容被叠一层黑、边缘发闷 */
+  position: fixed; inset: 0; background: rgba(5,4,3,.82); z-index: 92;
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .modal-box {
@@ -478,11 +482,21 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .mem-card { width: 100%; max-width: 400px; }
   .mc-desc { min-height: 0; }
 
-  /* HUD：六格等分一行，“放弃本局”独占下一行 */
-  #hud { padding: 6px 8px; gap: 4px; }
-  .hud-cell { flex: 1 1 0; min-width: 0; padding: 2px 4px; }
-  .hud-num { font-size: 15px; }
-  #btn-menu { width: 100%; margin: 4px 0 0; }
+  /* HUD：压到 2 行 —— 第1行 6 个数值格，第2行 4 个按钮 */
+  #hud {
+    display: grid; grid-template-columns: repeat(12, 1fr);
+    gap: 4px; padding: 6px 8px; align-items: stretch;
+  }
+  .hud-cell {
+    grid-column: span 2; min-width: 0; padding: 2px 2px;
+    border-right: none; align-items: center;
+  }
+  .hud-label { font-size: 9px; letter-spacing: 0.04em; }
+  .hud-num { font-size: 14px; }
+  #hud > .btn-mini {
+    grid-column: span 3; width: auto; margin: 0;
+    padding: 7px 2px; font-size: 10px; letter-spacing: 0; align-self: stretch;
+  }
 
   /* 主布局单列化 */
   .game-wrap { gap: 8px; }
@@ -490,7 +504,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
   /* 老虎机：格子收紧、拉杆按钮加高 */
   .slot-grid { gap: 4px; padding: 6px; }
-  .slot-cell { font-size: 22px; }
+  .slot-cell { font-size: 24px; }
   .spin-info { min-height: 54px; font-size: 12px; }
   .machine-controls { gap: 8px; }
   .machine-controls .btn { padding: 14px 10px; }
@@ -509,7 +523,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .drawer-slot { width: calc(50% - 3px); }
   .cc-trait { font-size: 11px; }
   .cc-flags { font-size: 10px; }
-  .cc-desc { font-size: 10.5px; max-height: 60px; }
+  .cc-desc { font-size: 11px; max-height: 60px; }
   .chg-n { font-size: 10px; }
 
   /* 弹窗：占满宽度，按钮等分 */
@@ -546,7 +560,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 }
 .fx-track {
   display: inline-flex; white-space: nowrap; padding: 5px 0; font-size: 12px;
-  color: var(--amber-dim); letter-spacing: 0.08em;
+  color: var(--amber); letter-spacing: 0.08em;
 }
 .fx-track span { padding: 0 28px; }
 .fx-rich {
@@ -632,8 +646,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .fx-track { font-size: 11px; }
   .codex-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 52vh; }
   .codex-item { padding: 7px 8px; }
-  .cx-desc { font-size: 10px; }
-  #btn-codex-game, #btn-menu { width: 100%; margin: 4px 0 0; }
+  .cx-desc { font-size: 11px; }
 }
 /* =========================================================================
  * v3：触屏说明气泡（替代只有悬停生效的 title）/ 阶段横幅
@@ -779,4 +792,51 @@ body.evil { animation: evilflash 0.9s ease-out; }
 @media (prefers-reduced-motion: reduce) {
   .fx-coin, .fx-doom-bit { display: none; }
   .slot-cell.rolling .cs, .slot-cell.settled { animation: none; }
+  /* 这四条以前漏掉了：强制减少动效时仍在无限闪烁 */
+  .logo-text, .slot-cell.six, .jackpot-text, .countdown { animation: none; }
+  body.evil { animation: none; }
+}
+
+/* =========================================================================
+ * v5：可访问性 / 移动端排布 / 中奖浮空演出
+ * ========================================================================= */
+
+/* 幸运符栏空态：降到 56px 并给出去商店的引导（旧版是一整条“黑洞”） */
+.charm-row.empty { min-height: 56px; }
+.charm-empty {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 56px; font-size: 12px; color: var(--dim);
+  border: 1px dashed var(--line2); border-radius: 6px;
+}
+
+/* 中奖金额浮空数字：从盘面中心向上飘散（HUD 的 +N 退化为纯计数） */
+.fx-float {
+  position: fixed; z-index: 96; pointer-events: none;
+  transform: translate(-50%, -50%);
+  font-size: clamp(22px, 3.4vw, 34px); font-weight: bold; letter-spacing: 0.08em;
+  color: #ffd24a; white-space: nowrap;
+  text-shadow: 0 0 18px rgba(255, 210, 74, .85), 0 0 42px rgba(255, 140, 40, .45);
+}
+
+/* 容量已满：商店卡抱一下 + 红描边，不必切到日志页找原因 */
+.store-deny { animation: denyshake 0.5s ease-out; border-color: var(--danger) !important; }
+@keyframes denyshake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  45% { transform: translateX(4px); }
+  70% { transform: translateX(-3px); }
+}
+
+/* 通话记录：对方回一句（data.js 里写了 40 条 resp，以前从未被渲染） */
+.cl-resp { font-size: 11px; color: var(--amber-dim); margin-top: 4px; font-style: italic; }
+
+/* 结局屏动作区 */
+.end-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.end-actions .btn { margin-top: 0; }
+
+/* 键盘可达性：div 型可点元素的焦点环 */
+.charm-card:focus-visible, .mem-card:focus-visible, .store-card:focus-visible,
+.phone-opt:focus-visible, .drawer-slot.filled:focus-visible,
+.btn:focus-visible, .tab:focus-visible {
+  outline: 2px solid var(--amber); outline-offset: 2px;
 }

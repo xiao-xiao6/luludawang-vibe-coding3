@@ -9,7 +9,8 @@
 (function () {
   const CP = globalThis.CP;
   const SYM = CP.SYMBOL_BY_ID;
-  const RARITY_W = { Common: 100, Uncommon: 90, Rare: 65, Legendary: 35 };
+  // Epic 目前只有记忆卡在用；补上键位，避免以后新增 Epic 符文时静默落到默认权重 50
+  const RARITY_W = { Common: 100, Uncommon: 90, Rare: 65, Epic: 50, Legendary: 35 };
 
   /* ---------------- 工具 ---------------- */
   function chance(st, p) { return st.rng() < p; }
@@ -605,8 +606,8 @@
       },
     },
   });
-  def("one_trick_pony", "独门绝技小马", "Rare", 2, "下回合必定触发一次大满贯，随后消失。", {
-    unlock: (m) => (m.stats.deaths || 0) >= 5, disposable: true, trigger: "instant",
+  def("one_trick_pony", "独门绝技小马", "Rare", 2, "【不占容量】下回合必定触发一次大满贯，随后消失。", {
+    unlock: (m) => (m.stats.deaths || 0) >= 5, disposable: true, noSpace: true, trigger: "instant",
     instant(st, c) { st.flags.nextRoundJackpot = true; },
   });
 
@@ -790,8 +791,8 @@
       },
     },
   });
-  def("scratch_and_hope", "刮刮乐", "Legendary", 5, "当前出现率最高的符号出现率 +1（永久）。", {
-    unlock: (m) => (m.stats.purchases || 0) >= 25, trigger: "instant",
+  def("scratch_and_hope", "刮刮乐", "Legendary", 5, "【不占容量】当前出现率最高的符号出现率 +1（永久）。", {
+    unlock: (m) => (m.stats.purchases || 0) >= 25, noSpace: true, trigger: "instant",
     instant(st, c) { st.permWeightBonus[mostProbable(st)] += 1; },
   });
   def("jimbo", "吉宝", "Rare", 5, "每期开始随机获得一种效果：符号倍率+1 / 图案倍率+1 / 利息+5% / 幸运值+3。", {

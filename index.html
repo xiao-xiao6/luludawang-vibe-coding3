@@ -25,10 +25,10 @@
     <p class="logo-tag">rogue-lite 老虎机噩梦 · 为你的性命下注</p>
     <div id="title-meta" class="title-meta"></div>
     <div class="title-buttons">
-      <button id="btn-continue" class="btn btn-amber hidden">⏵ 继续上一局</button>
-      <button id="btn-new-run" class="btn btn-amber">开始新的一局</button>
-      <button id="btn-guide" class="btn">玩法指南</button>
-      <button id="btn-codex" class="btn">道具图鉴</button>
+      <button type="button" id="btn-continue" class="btn btn-amber hidden">⏵ 继续上一局</button>
+      <button type="button" id="btn-new-run" class="btn btn-amber">开始新的一局</button>
+      <button type="button" id="btn-guide" class="btn">玩法指南</button>
+      <button type="button" id="btn-codex" class="btn">道具图鉴</button>
     </div>
     <p class="title-foot">致敬 Panik Arcade《CloverPit》的非官方同人复刻</p>
   </div>
@@ -39,7 +39,7 @@
   <div class="cards-wrap">
     <h2 class="panel-title">插入记忆卡</h2>
     <div id="card-grid" class="card-grid"></div>
-    <button id="btn-cards-back" class="btn">← 返回</button>
+    <button type="button" id="btn-cards-back" class="btn">← 返回</button>
   </div>
 </section>
 
@@ -53,10 +53,10 @@
       <div class="hud-cell"><span class="hud-label">回合</span><span id="hud-round" class="hud-num">0/3</span></div>
       <div class="hud-cell"><span class="hud-label">旋转</span><span id="hud-spins" class="hud-num amber">—</span></div>
       <div class="hud-cell"><span class="hud-label">幸运</span><span id="hud-luck" class="hud-num amber">—</span></div>
-      <button id="btn-calllog" class="btn btn-mini">☎ 通话记录</button>
-      <button id="btn-codex-game" class="btn btn-mini">📖 图鉴</button>
-      <button id="btn-sound" class="btn btn-mini">🔊 音效</button>
-      <button id="btn-menu" class="btn btn-mini">放弃本局</button>
+      <button type="button" id="btn-calllog" class="btn btn-mini">☎ 通话记录</button>
+      <button type="button" id="btn-codex-game" class="btn btn-mini">📖 图鉴</button>
+      <button type="button" id="btn-sound" class="btn btn-mini">🔊 音效</button>
+      <button type="button" id="btn-menu" class="btn btn-mini">放弃本局</button>
     </header>
 
     <div class="game-main">
@@ -67,10 +67,10 @@
           <span id="machine-luck" class="machine-luck"></span>
         </div>
         <div id="slot-grid" class="slot-grid"></div>
-        <div id="spin-info" class="spin-info"><div class="dim">拉下拉杆，开始旋转……</div></div>
+        <div id="spin-info" class="spin-info" role="status" aria-live="polite"><div class="dim">拉下拉杆，开始旋转……</div></div>
         <div class="machine-controls">
-          <button id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
-          <button id="btn-red" class="btn btn-red" title="消耗⚡能量：立即触发所有充能型幸运符（能量每回合结算时自动回复）">◉ 红色按钮</button>
+          <button type="button" id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
+          <button type="button" id="btn-red" class="btn btn-red" title="消耗⚡能量：立即触发所有充能型幸运符（能量每回合结算时自动回复）">◉ 红色按钮</button>
         </div>
         <div id="round-controls" class="round-controls"></div>
       </div>
@@ -87,10 +87,10 @@
           <div class="atm-row small dim"><span id="atm-note"></span></div>
         </div>
         <div class="atm-buttons">
-          <button class="btn btn-mini dep" data-f="0.25">存入 25%</button>
-          <button class="btn btn-mini dep" data-f="0.5">存入 50%</button>
-          <button class="btn btn-mini dep dep-max" data-f="1">全部存入</button>
-          <button id="btn-end-deadline" class="btn btn-mini btn-warn" title="自动把身上金币存入ATM并结算本期">结束本期</button>
+          <button type="button" class="btn btn-mini dep" data-f="0.25">存入 25%</button>
+          <button type="button" class="btn btn-mini dep" data-f="0.5">存入 50%</button>
+          <button type="button" class="btn btn-mini dep dep-max" data-f="1">全部存入</button>
+          <button type="button" id="btn-end-deadline" class="btn btn-mini btn-warn" title="自动把身上金币存入ATM并结算本期">结束本期</button>
         </div>
         <div id="countdown-banner" class="countdown hidden"></div>
         <div id="pack-banner" class="pack hidden"></div>
@@ -99,9 +99,9 @@
       <!-- 符号/图案/日志 -->
       <div class="panel boards-panel">
         <div class="tabs">
-          <button class="tab active" data-tab="symbols">符号板</button>
-          <button class="tab" data-tab="patterns">图案板</button>
-          <button class="tab" data-tab="log">日志</button>
+          <button type="button" class="tab active" data-tab="symbols">符号板</button>
+          <button type="button" class="tab" data-tab="patterns">图案板</button>
+          <button type="button" class="tab" data-tab="log">日志</button>
         </div>
         <div id="tab-symbols" class="tab-body board-list"></div>
         <div id="tab-patterns" class="tab-body board-list hidden"></div>
@@ -124,7 +124,7 @@
         <div class="panel-title-row">
           <span class="panel-title">商店</span>
           <span id="store-info" class="dim small"></span>
-          <button id="btn-restock" class="btn btn-mini">补货</button>
+          <button type="button" id="btn-restock" class="btn btn-mini">补货</button>
         </div>
         <div id="store-row" class="charm-row"></div>
       </div>
@@ -140,26 +140,26 @@
 </section>
 
 <!-- ==================== 电话弹窗 ==================== -->
-<div id="modal-phone" class="modal hidden">
+<div id="modal-phone" class="modal hidden" role="dialog" aria-modal="true" aria-label="来电">
   <div class="modal-box phone-box">
     <div id="phone-head" class="phone-head">☎ 电话响了……</div>
     <div id="phone-greet" class="phone-greet"></div>
     <div id="phone-options" class="phone-options"></div>
     <div class="phone-actions">
-      <button id="btn-phone-reroll" class="btn btn-mini"></button>
-      <button id="btn-phone-log" class="btn btn-mini">📜 通话记录</button>
-      <button id="btn-phone-later" class="btn btn-mini">等会儿再说</button>
+      <button type="button" id="btn-phone-reroll" class="btn btn-mini"></button>
+      <button type="button" id="btn-phone-log" class="btn btn-mini">📜 通话记录</button>
+      <button type="button" id="btn-phone-later" class="btn btn-mini">等会儿再说</button>
     </div>
   </div>
 </div>
 
 <!-- ==================== 通话记录 ==================== -->
-<div id="modal-calllog" class="modal hidden">
+<div id="modal-calllog" class="modal hidden" role="dialog" aria-modal="true" aria-label="通话记录">
   <div class="modal-box calllog-box">
     <div class="codex-head">
       <h3>☎ 通话记录</h3>
       <span id="calllog-progress" class="dim small"></span>
-      <button id="btn-calllog-close" class="btn btn-mini">✕ 关闭</button>
+      <button type="button" id="btn-calllog-close" class="btn btn-mini">✕ 关闭</button>
     </div>
     <div id="calllog-body" class="calllog-body"></div>
     <div class="dim small codex-hint">你接听过、挂断过、推迟过的每一通电话都会记在这里。</div>
@@ -167,23 +167,23 @@
 </div>
 
 <!-- ==================== 符文详情 ==================== -->
-<div id="modal-charm" class="modal hidden">
+<div id="modal-charm" class="modal hidden" role="dialog" aria-modal="true" aria-label="幸运符详情">
   <div class="modal-box charm-box">
     <div id="charm-detail"></div>
     <div class="modal-actions">
-      <button id="btn-charm-sell" class="btn btn-mini btn-warn">转卖</button>
-      <button id="btn-charm-drawer" class="btn btn-mini">放入抽屉</button>
-      <button id="btn-charm-close" class="btn btn-mini">关闭</button>
+      <button type="button" id="btn-charm-sell" class="btn btn-mini btn-warn">转卖</button>
+      <button type="button" id="btn-charm-drawer" class="btn btn-mini">放入抽屉</button>
+      <button type="button" id="btn-charm-close" class="btn btn-mini">关闭</button>
     </div>
   </div>
 </div>
 
 <!-- ==================== 期末结算 ==================== -->
-<div id="modal-summary" class="modal hidden">
+<div id="modal-summary" class="modal hidden" role="dialog" aria-modal="true" aria-label="期限结算">
   <div class="modal-box summary-box">
     <h3 id="summary-title">期限结算</h3>
     <div id="summary-body"></div>
-    <button id="btn-summary-ok" class="btn btn-amber">继续</button>
+    <button type="button" id="btn-summary-ok" class="btn btn-amber">继续</button>
   </div>
 </div>
 
@@ -195,20 +195,20 @@
 <!-- ==================== 指南 ==================== -->
 <section id="screen-guide" class="screen hidden">
   <div class="guide-card" id="guide-card"></div>
-  <button id="btn-guide-back" class="btn btn-amber">← 返回</button>
+  <button type="button" id="btn-guide-back" class="btn btn-amber">← 返回</button>
 </section>
 
 <!-- ==================== 道具图鉴 ==================== -->
-<div id="modal-codex" class="modal hidden">
+<div id="modal-codex" class="modal hidden" role="dialog" aria-modal="true" aria-label="道具图鉴">
   <div class="modal-box codex-box">
     <div class="codex-head">
       <h3>📖 道具图鉴</h3>
       <span id="codex-progress" class="dim small"></span>
-      <button id="btn-codex-close" class="btn btn-mini">✕ 关闭</button>
+      <button type="button" id="btn-codex-close" class="btn btn-mini">✕ 关闭</button>
     </div>
     <div class="codex-tabs">
-      <button class="tab active" data-codex="charms">幸运符</button>
-      <button class="tab" data-codex="cards">记忆卡</button>
+      <button type="button" class="tab active" data-codex="charms">幸运符</button>
+      <button type="button" class="tab" data-codex="cards">记忆卡</button>
     </div>
     <div id="codex-legend" class="codex-legend"></div>
     <div id="codex-charms" class="codex-grid"></div>
