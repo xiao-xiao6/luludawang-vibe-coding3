@@ -226,6 +226,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .m-repetition { background: #7fd8ff; box-shadow: 0 0 5px #7fd8ff; }
 .m-battery { background: #ffe066; box-shadow: 0 0 5px #ffe066; }
 .m-chain { background: #d8a8ff; box-shadow: 0 0 5px #d8a8ff; }
+.m-wild { background: #c8f0ff; box-shadow: 0 0 5px #c8f0ff; }
 
 .spin-info { min-height: 64px; margin: 8px 0; font-size: 13px; line-height: 1.6; }
 .payout {

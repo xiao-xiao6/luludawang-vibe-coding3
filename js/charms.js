@@ -863,6 +863,74 @@
     instant(st, c) { st.cadaver.skull = true; },
   });
 
+  /* ============ 连锁系（免费旋转 / 连锁奖励） ============
+   * 数值口径：data.js「免费旋转 / 连锁奖励的期望值口径」+ par sheet §3 P1-1
+   *   单次触发的期望总次数 E = n / (1 − B)，B = 再触发分支因子
+   * 所有赠送一律走 E.grantFreeSpins（含每回合硬上限），符文自己不碰 spinsLeft。 */
+  def("chain_reaction", "连锁反应", "Rare", 3, "每次旋转计分含 3+ 图案时，赠送 1 次旋转（每回合上限 6 次）。", {
+    base: true,
+    hooks: {
+      spinEnd(c, st, ctx) {
+        if (ctx.free || ctx.scored.length < 3) return;
+        if (CP.Engine.grantFreeSpins(st, 1, "连锁反应")) triggered(st);
+      },
+    },
+  });
+  def("jackpot_echo", "满贯回响", "Legendary", 4, "每次出现大满贯时，赠送 6 次旋转（每回合上限 24 次）。", {
+    unlock: (m) => (m.stats.jackpots || 0) >= 8,
+    hooks: {
+      spinEnd(c, st, ctx) {
+        if (!ctx.scored.some((r) => r.id === "JACKPOT")) return;
+        if (CP.Engine.grantFreeSpins(st, 6, "满贯回响")) triggered(st);
+      },
+    },
+  });
+  def("chain_letter", "连锁信", "Epic", 3, "本回合每完成 5 次旋转，赠送 1 次旋转（每回合上限 8 次）。", {
+    unlock: (m) => (m.stats.spins || 0) >= 400,
+    hooks: {
+      spinEnd(c, st, ctx) {
+        if (ctx.roundSpinNum % 5 !== 0) return;
+        if (CP.Engine.grantFreeSpins(st, 1, "连锁信")) triggered(st);
+      },
+    },
+  });
+  def("deep_echo", "深渊回响", "Legendary", 5, "每次旋转计分含 5+ 图案时，赠送 2 次旋转（每回合上限 20 次）。", {
+    unlock: (m) => (m.stats.patterns || 0) >= 400,
+    hooks: {
+      spinEnd(c, st, ctx) {
+        if (ctx.free || ctx.scored.length < 5) return;
+        if (CP.Engine.grantFreeSpins(st, 2, "深渊回响")) triggered(st);
+      },
+    },
+  });
+
+  /* ============ 万能系（百搭） ============
+   * 口径：par sheet §3 P0-2 —— 连线格 = 符号格 + 万能格；
+   *       一条图案里出现两种以上非万能符号则不成立（见 engine.js 的 resolveSym）。 */
+  def("wild_card", "万能牌", "Legendary", 4, "所有符号 4% 概率获得「万能」修饰词。", {
+    unlock: (m) => (m.stats.patterns || 0) >= 350,
+    hooks: { modChance(c, st, ctx) { ctx.chances.any.wild = (ctx.chances.any.wild || 0) + 0.04; } },
+  });
+  def("joker", "小丑牌", "Rare", 3, "四叶草与铃铛有 8% 概率获得「万能」修饰词。", {
+    unlock: (m) => (m.stats.patterns || 0) >= 200,
+    hooks: {
+      modChance(c, st, ctx) {
+        symChance(ctx, "clover").wild = (symChance(ctx, "clover").wild || 0) + 0.08;
+        symChance(ctx, "bell").wild = (symChance(ctx, "bell").wild || 0) + 0.08;
+      },
+    },
+  });
+  def("mirror", "镜子", "Rare", 3, "柠檬与樱桃有 10% 概率获得「万能」修饰词。", {
+    base: true,
+    hooks: {
+      modChance(c, st, ctx) {
+        symChance(ctx, "lemon").wild = (symChance(ctx, "lemon").wild || 0) + 0.10;
+        symChance(ctx, "cherry").wild = (symChance(ctx, "cherry").wild || 0) + 0.10;
+      },
+    },
+  });
+  decayCharm("wild_ink", "万能墨水", "wild", 8, 1.5);
+
   /* ---------------- 可重复购买（默认：同一种符文同时只能拥有一件） ----------------
    * 仅这些「不占容量 / 买到即生效」的消耗型符文允许叠加购买。 */
   for (const id of ["cigarettes", "cardboard_house", "one_trick_pony", "fortune_cookie",

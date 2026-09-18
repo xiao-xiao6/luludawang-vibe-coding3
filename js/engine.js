@@ -52,8 +52,8 @@
       interestAdd: 0, interestMult: 1,
       luckBase: 0,
       weightBonus: {}, weightHalves: {},
-      modChance: { golden: {}, token: {}, ticket: {}, repetition: {}, battery: {}, chain: {} },
-      modAny: { golden: 0, token: 0, ticket: 0, repetition: 0, battery: 0, chain: 0 },
+      modChance: { golden: {}, token: {}, ticket: {}, repetition: {}, battery: {}, chain: {}, wild: {} },
+      modAny: { golden: 0, token: 0, ticket: 0, repetition: 0, battery: 0, chain: 0, wild: 0 },
       charmSpace: st.baseCharmSpace + (st.charmSpaceBonus || 0),
       extraSpins: 0,
       p666Add: 0, p666Mult: 1,
@@ -149,7 +149,7 @@
       // 回合/期统计
       roundEarnings: 0,
       roundLost666: 0,
-      stats: { spins: 0, jackpots: 0, patterns: 0, biggest: 0, sixes: 0, holy: 0, deposited: 0, restocks: 0, purchases: 0, rerolls: 0, discarded: 0 },
+      stats: { spins: 0, jackpots: 0, patterns: 0, biggest: 0, sixes: 0, holy: 0, deposited: 0, restocks: 0, purchases: 0, rerolls: 0, discarded: 0, freeSpins: 0, wilds: 0 },
       // 尸块/钥匙/结局
       cadaver: { skull: false, armL: false, armR: false, legL: false, legR: false },
       cadaverCompletedAt: 0,
@@ -315,6 +315,9 @@
     st.flags.extraPatterns = {};
     st.flags.ghUsesThisRound = 0;
     st.flags.charmTriggersThisRound = 0;
+    // 连锁系：赠送旋转的每回合额度（E.grantFreeSpins 的硬上限用）
+    st.flags.freeSpinsGrantedThisRound = 0;
+    st.flags.freeSpinsThisRound = 0;
     st.bookShadowsStreak = 3;
     touch(st);
     const d = E.derived(st);
@@ -493,12 +496,14 @@
         ["repetition", (per.repetition || 0) + (any.repetition || 0)],
         ["battery", (per.battery || 0) + (any.battery || 0)],
         ["chain", (per.chain || 0) + (any.chain || 0)],
+        ["wild", (per.wild || 0) + (any.wild || 0)],
       ];
       const hit = rolls.filter(([, p]) => rng() < p);
       if (hit.length) boardMods[i] = hit[0][0]; // 同格只取一个修饰词
     }
     st.board = board;
     st.boardMods = boardMods;
+    for (const i of freeCells) if (boardMods[i] === "wild") st.stats.wilds += 1;
 
     /* --- 计分 --- */
     const res = E.scoreBoard(st, board, boardMods);
@@ -653,24 +658,61 @@
     return out;
   };
 
+  /* =============== 赠送旋转（免费旋转 / 连锁奖励） ===============
+   * 数值口径见 data.js 的「免费旋转 / 连锁奖励的期望值口径」注释：
+   *   单次触发的期望总次数 E = n / (1 − B)（B = 再触发分支因子）
+   * 这里额外加「每回合赠送总量硬上限」，保证任何连锁配置都不会发散。
+   * 连锁系符文（charms.js）统一走这里，不自己直接改 spinsLeft。 */
+  E.grantFreeSpins = function (st, n, label) {
+    n = Math.floor(n || 0);
+    if (n <= 0) return 0;
+    const cap = CP.FREE_SPIN_ROUND_CAP || 60;
+    const used = st.flags.freeSpinsGrantedThisRound || 0;
+    const add = Math.min(n, Math.max(0, cap - used));
+    if (add <= 0) {
+      E.addFeed(st, "赠送旋转已达本回合上限", "warn");
+      return 0;
+    }
+    st.flags.freeSpinsGrantedThisRound = used + add;
+    st.flags.freeSpinsThisRound = (st.flags.freeSpinsThisRound || 0) + add;
+    st.stats.freeSpins = (st.stats.freeSpins || 0) + add;
+    st.spinsLeft += add;
+    if (label) E.addFeed(st, label + "：+" + add + " 次旋转", "good");
+    return add;
+  };
+
   /* =============== 图案计分（核心） =============== */
   E.scoreBoard = function (st, board, boardMods) {
     const d = E.derived(st);
     const extra = st.flags.extraPatterns || {};
     // 1. 匹配
     const matches = [];
+    const symOf = new Map(); // 图案实例 -> 解析出的计分符号
     // 修复：被 6️⃣ 印上的格子不参与图案判定（旧符号残留曾导致幽灵匹配）
     const sixSet = st.sixCells && st.sixCells.length ? new Set(st.sixCells) : null;
+    /* 「万能」（百搭）口径 —— par sheet §3 P0-2：
+     * 连线格 = 该符号格 + 万能格；但一条图案里只能存在一个「非万能」符号
+     * （万能不能弥合两个不同符号）。整条图案全是万能格时按最高基础价值符号计分。 */
+    const resolveSym = (cells) => {
+      let sym = null;
+      for (const i of cells) {
+        if (boardMods && boardMods[i] === "wild") continue;
+        const s = board[i];
+        if (!s || s === "six") return null;
+        if (sym === null) sym = s;
+        else if (sym !== s) return null;
+      }
+      return sym || CP.WILD_FALLBACK_SYMBOL || "seven";
+    };
     for (const inst of CP.PATTERN_INSTANCES) {
       if (inst.extra && !extra[inst.id]) continue;
       if (sixSet && inst.cells.some((c) => sixSet.has(c))) continue;
       const s0 = board[inst.cells[0]];
       if (!s0 || s0 === "six") continue;
-      let ok = true;
-      for (let k = 1; k < inst.cells.length; k++) {
-        if (board[inst.cells[k]] !== s0) { ok = false; break; }
-      }
-      if (ok) matches.push(inst);
+      const sym = resolveSym(inst.cells);
+      if (!sym) continue;
+      matches.push(inst);
+      symOf.set(inst, sym);
     }
     // 2. 包含过滤（大图案优先；头奖不阻挡他人）
     matches.sort((a, b) => PB[b.id] - PB[a.id] || b.cells.length - a.cells.length);
@@ -697,9 +739,10 @@
     const retriCtx = { add: {} }; // 按图案id加成
     fx(st, "retrigger", retriCtx);
     for (const p of scored) {
-      const sym = board[p.cells[0]];
+      // 万能格已在上一步解析成该图案的统一符号，这里整条图案都按它计分
+      const sym = symOf.get(p) || board[p.cells[0]];
       const symVal = st.symValues[sym] || 0;
-      const symSum = p.cells.reduce((a, i) => a + (st.symValues[board[i]] || 0), 0);
+      const symSum = p.cells.reduce((a) => a + symVal, 0);
       let triggers = 1;
       triggers += st.flags.permPatternRetrigger || 0;
       triggers += (retriCtx.add[p.id] || 0);
