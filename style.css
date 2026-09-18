@@ -22,6 +22,8 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { min-height: 100%; }
+/* 双端字号一致：iOS 横屏 / 系统大字号设置下不让浏览器自行放大正文 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   background:
     radial-gradient(1200px 620px at 18% -10%, #241f18 0%, transparent 60%),
@@ -31,6 +33,7 @@ body {
   font-family: Consolas, "Courier New", "Noto Sans Mono CJK SC", monospace;
   letter-spacing: 0.03em;
   min-height: 100vh;
+  min-height: 100dvh;   /* 手机地址栏收放时不再跳高 */
   overflow-x: hidden;
 }
 /* CRT 氛围层 */
@@ -58,8 +61,11 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 /* ==================== 通用面板/按钮 ==================== */
 .screen {
-  min-height: 100vh; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; padding: 18px;
+  min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  /* 刘海 / 挖孔 / 手势条：留出安全区，内容不被遮挡、底部按钮不误触 */
+  padding: calc(18px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right))
+           calc(18px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
 }
 .panel {
   background: linear-gradient(180deg, #1a1712, #14110c);
@@ -374,11 +380,13 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .modal {
   /* 必须盖在 CRT 扫描线(90) / 暗角(91) 之上，否则弹窗内容被叠一层黑、边缘发闷 */
   position: fixed; inset: 0; background: rgba(5,4,3,.82); z-index: 92;
-  display: flex; align-items: center; justify-content: center; padding: 16px;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+           calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
 .modal-box {
   background: #15120d; border: 1px solid var(--line2); border-radius: 10px;
-  padding: 18px 20px; max-width: 580px; width: 94%; max-height: 88vh; overflow-y: auto;
+  padding: 18px 20px; max-width: 580px; width: 94%; max-height: 88vh; max-height: 88dvh; overflow-y: auto;
   box-shadow: 0 10px 44px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.04);
 }
 .modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
@@ -459,8 +467,10 @@ body.evil { animation: evilflash 0.9s ease-out; }
     touch-action: manipulation;                     /* 消除双击缩放延迟 */
   }
   .btn { padding: 11px 16px; }                      /* 指尖友好：放大点击区 */
-  .btn-mini { padding: 8px 12px; }
-  .tab { padding: 8px 6px; }
+  .btn-mini { padding: 8px 12px; min-height: 38px; }
+  .tab { padding: 9px 6px; min-height: 40px; }
+  /* HUD 为了两行紧凑排布不强制最小高度（否则顶栏会被撑高） */
+  #hud > .btn-mini { min-height: 0; }
   .phone-opt { padding: 12px; }
   /* 触屏没有“悬停”：点按后不要一直保持抬起状态 */
   .mem-card:hover, .charm-card:hover { transform: none; }
@@ -468,7 +478,12 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 /* —— 手机窄屏布局（≤760px）：老虎机 → ATM → 符号板 单列纵排 —— */
 @media (max-width: 760px) {
-  .screen { padding: 10px; min-height: 100dvh; }    /* dvh 修复手机地址栏抖动 */
+  /* dvh 修复手机地址栏抖动；安全区保证刘海屏 / 手势条不吃掉内容 */
+  .screen {
+    min-height: 100dvh;
+    padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+             calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+  }
   .small { font-size: 12px; }
 
   /* 标题画面 */
@@ -528,7 +543,10 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .chg-n { font-size: 10px; }
 
   /* 弹窗：占满宽度，按钮等分 */
-  .modal { padding: 10px; }
+  .modal {
+    padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right))
+             calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+  }
   .modal-box { width: 100%; padding: 14px; }
   .modal-actions, .phone-actions { flex-wrap: wrap; }
   .modal-actions .btn, .phone-actions .btn { flex: 1; padding: 11px 8px; }
@@ -558,6 +576,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .fx-marquee {
   position: fixed; top: 0; left: 0; right: 0; z-index: 3; overflow: hidden; pointer-events: none;
   border-bottom: 1px solid var(--line); background: rgba(10, 8, 6, 0.88);
+  /* 刘海屏：viewport-fit=cover 下页面会顶到屏幕最上沿，跑马灯要给状态栏让位 */
+  padding-top: env(safe-area-inset-top);
 }
 .fx-track {
   display: inline-flex; white-space: nowrap; padding: 5px 0; font-size: 12px;
@@ -618,7 +638,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .codex-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
 .codex-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px;
-  max-height: 56vh; overflow-y: auto; padding-right: 4px;
+  max-height: 56vh; max-height: 56dvh; overflow-y: auto; padding-right: 4px;
 }
 .codex-item { border: 1px solid var(--line2); border-radius: 6px; padding: 9px 11px; background: #191510; }
 .codex-item.r-Legendary { border-color: var(--gold); box-shadow: 0 0 9px rgba(232, 185, 60, 0.2); }
@@ -634,7 +654,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .codex-hint { margin-top: 10px; }
 
 /* 指南增强（内容变多后可滚动） */
-.guide-card { max-height: 86vh; overflow-y: auto; }
+.guide-card { max-height: 86vh; max-height: 86dvh; overflow-y: auto; }
 #screen-guide { justify-content: flex-start; }
 .guide-card h3 {
   color: var(--amber-dim); margin: 16px 0 6px; font-size: 14px; letter-spacing: 0.14em;
@@ -645,7 +665,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 @media (max-width: 760px) {
   .fx-zone-label { display: none; }
   .fx-track { font-size: 11px; }
-  .codex-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 52vh; }
+  .codex-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 52vh; max-height: 52dvh; }
   .codex-item { padding: 7px 8px; }
   .cx-desc { font-size: 11px; }
 }
@@ -766,7 +786,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 /* —— 通话记录 —— */
 .calllog-box { max-width: 620px; }
-.calllog-body { max-height: 58vh; overflow-y: auto; padding-right: 4px; }
+.calllog-body { max-height: 58vh; max-height: 58dvh; overflow-y: auto; padding-right: 4px; }
 .calllog-item {
   border: 1px solid var(--line2); border-left-width: 3px; border-radius: 6px;
   padding: 8px 11px; margin-bottom: 7px; background: #191510;
@@ -840,4 +860,56 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .phone-opt:focus-visible, .drawer-slot.filled:focus-visible,
 .btn:focus-visible, .tab:focus-visible {
   outline: 2px solid var(--amber); outline-offset: 2px;
+}
+
+/* =========================================================================
+ * v6：双端适配收尾 —— 触屏悬停复位 / 手机横屏矮视口 / 大屏加宽
+ * 桌面端（有 hover 能力、非矮视口、≤1499px）样式完全不变
+ * ========================================================================= */
+
+/* —— 触屏没有真正的「悬停」：点按之后别让 hover 样式一直挂着 —— */
+@media (hover: none) {
+  .btn:hover:not(:disabled) { border-color: var(--line2); color: var(--text); }
+  .btn-amber:hover:not(:disabled) { border-color: var(--amber-dim); color: #ffd9a0; }
+  .btn-red:hover:not(:disabled) { border-color: #7a2a1a; color: #ff8a70; }
+  .btn-lever:hover:not(:disabled) {
+    box-shadow: 0 0 14px rgba(255,179,71,.22), inset 0 1px 0 rgba(255,255,255,.08);
+  }
+  .mem-card:hover { transform: none; box-shadow: none; }
+  .charm-card:hover { transform: none; border-color: var(--line2); }
+  .phone-opt:hover { border-color: var(--line2); background: #191510; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a332a; }
+}
+
+/* —— 手机横屏：视口只剩 320~430px 高，纵向留白必须让位给内容 —— */
+@media (orientation: landscape) and (max-height: 520px) {
+  .screen { justify-content: flex-start; }
+  .logo-clover { font-size: 30px; }
+  .logo-text { font-size: clamp(26px, 5.2vw, 46px); }
+  .logo-sub { font-size: 14px; margin: 2px 0 8px; }
+  .logo-tag { margin-bottom: 10px; }
+  .title-meta { margin-bottom: 10px; padding: 6px 12px; line-height: 1.6; }
+  .title-buttons { margin-bottom: 10px; }
+  .title-foot { font-size: 10px; }
+  .card-grid { margin: 10px 0 12px; }
+  .mem-card { padding: 10px 12px; }
+  .slot-cell { font-size: 20px; }
+  .spin-info { min-height: 34px; font-size: 11.5px; margin: 6px 0; }
+  .board-list, .feed-list { max-height: 190px; }
+  .modal-box { max-height: 92vh; max-height: 92dvh; }
+  .guide-card { max-height: 80vh; max-height: 80dvh; }
+}
+
+/* —— 超宽桌面（≥1500px）：面板跟着放大，两侧不留大片空 —— */
+@media (min-width: 1500px) {
+  .game-wrap { max-width: 1320px; }
+  .game-main {
+    grid-template-columns: minmax(400px, 1.35fr) minmax(280px, 1fr) minmax(260px, .95fr);
+  }
+}
+
+/* —— 触屏滚动体验：内层滚动区滚到底时不要“带”着页面一起滚
+ *    （iOS 橡皮筋 / 安卓滚动链，手机上很容易误触到背后页面） —— */
+.board-list, .feed-list, .codex-grid, .calllog-body, .modal-box, .guide-card {
+  overscroll-behavior: contain;
 }
