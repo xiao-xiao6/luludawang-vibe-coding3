@@ -54,7 +54,11 @@
       weightBonus: {}, weightHalves: {},
       modChance: { golden: {}, token: {}, ticket: {}, repetition: {}, battery: {}, chain: {}, wild: {} },
       modAny: { golden: 0, token: 0, ticket: 0, repetition: 0, battery: 0, chain: 0, wild: 0 },
-      charmSpace: st.baseCharmSpace + (st.charmSpaceBonus || 0),
+      // 记忆卡修正：直接算进初始值，而不是等符文钩子跑完再整体覆盖。
+      // 旧写法在 fx(st, "derived", d) 之后 `d.charmSpace = 6`，会把房产证(+2)/纸板屋(+1)
+      // 的加成吃掉，连沙漏(-1)/核按钮(-1)/扩音器(-1) 的惩罚也一起吃掉。
+      // 现在「牺牲」只是初始值上的 -1，后面的钩子修正照常叠加。
+      charmSpace: st.baseCharmSpace + (st.charmSpaceBonus || 0) - (st.cardId === "sacrifices" ? 1 : 0),
       extraSpins: 0,
       p666Add: 0, p666Mult: 1,
       interestOnlyDeadlineEnd: false,
@@ -80,8 +84,8 @@
     d.p666Add += (d.traitCount.devious || 0) * 0.006;
     // 符文被动（charms.js 注入）
     fx(st, "derived", d);
-    // 记忆卡修正
-    if (st.cardId === "sacrifices") d.charmSpace = 6;
+    // 容量保底：任何叠加（牺牲/沙漏/核按钮/扩音器）之后都不能降到 0 以下
+    d.charmSpace = Math.max(1, d.charmSpace);
     d.interest = Math.max(0, (CP.BASE_INTEREST + d.interestAdd + (st.interestBonus || 0)) * d.interestMult);
     st._d = d;
     st._dDirty = false;
@@ -130,7 +134,7 @@
       freeRestocks: 0,
       storeDiscountTemp: 0,
       // 电话
-      phone: { pending: false, options: [], picked: [], rerolls: 0, available: false, redForced: false, sacredReady: false, usedOnce: {}, log: [] },
+      phone: { pending: false, options: [], picked: [], rerolls: 0, available: false, redForced: false, sacredReady: false, usedOnce: {}, log: [], deferred: false },
       redTaken: false,
       sacredMode: false,
       sacredRejections: 0,
@@ -219,6 +223,7 @@
     st.sixCells = [];
     st.board = Array(15).fill(null);
     st.phone.pending = false;
+    st.phone.deferred = false;
     st.phone.rerolls = 0;
     st.phone.redForced = st.deadline === 3 || st.deadline === 7 || st.flags.redNext || false;
     st.flags.redNext = false;
@@ -319,6 +324,15 @@
     st.flags.freeSpinsGrantedThisRound = 0;
     st.flags.freeSpinsThisRound = 0;
     st.bookShadowsStreak = 3;
+    // 上回合选了「等会儿再说」的电话：本回合重新响铃（选项重掷）。
+    // 旧实现直接把 pending 和 options 都清掉，UI 入口随之消失——
+    // 玩家以为「推迟到以后」，实际是「放弃本期电话」，文案在撒谎。
+    if (st.phone.deferred && st.phone.available && !st.phone.pending) {
+      st.phone.deferred = false;
+      st.phone.pending = true;
+      E.rollPhoneOptions(st);
+      E.addFeed(st, "电话又响了——它还在等你。", "warn");
+    }
     touch(st);
     const d = E.derived(st);
     let spins, cost = 0, free = false;
@@ -329,7 +343,10 @@
       // 执念卡每回合固定 1 次旋转；身无分文时同样并入「免费回合」口径（图案不计酬、结算 +1 券）
       spins = 1;
       if (st.coins <= 0) { free = true; cost = 0; }
-      else cost = Math.min(st.coins, lever);
+      // 拉杆费按「次数」折算：整轮价 lever 是买 baseSpins 次旋转的，只转 1 次却收
+      // 整轮价 = 单次成本 7 倍（实测收益/支出 1.9，普通卡 15.3）。文案想表达的
+      // 是「细水长流」，不是「7 倍智商税」。
+      else cost = Math.min(st.coins, Math.max(1, Math.ceil(lever / baseSpins)));
     }
     else if (st.coins >= lever) { cost = lever; spins = wantSpins; }
     else if (st.coins > 0) {
@@ -533,6 +550,10 @@
       roundSpinNum: st.roundSpinNum, luck: luck.total,
     };
     fx(st, "spinEnd", spinCtx);
+    // spinEnd / spinEndLate 里的「累积层数型」符文（塔罗牌 / 五芒星 / 摇铃）会在
+    // 旋转过程中改 stacks，而 derived 是靠 touch() 置脏的缓存。旧实现整段 spin()
+    // 没有一次 touch()，导致层数涨了、倍率不跟 —— 越到后期亏得越多。
+    touch(st);
     if (!st.freeRound) {
       st.coins += spinCtx.gainCoins || 0;
       st.roundEarnings += spinCtx.gainCoins || 0;
@@ -560,6 +581,13 @@
       spinsLeft: st.spinsLeft,
     };
     if (st.spinsLeft <= 0) st.phase = "roundEnd";
+    // 旋转是「先结算、后播动画」：动画途中刷新页面时，状态已变但 lastSpin 丢了，
+    // 高亮与结果文字会和盘面对不上。存一份可序列化的摘要，续档时重建。
+    st.lastSpinData = {
+      board: board.slice(), boardMods: boardMods.slice(),
+      scored: res.scored, payout, jackpot: res.jackpot,
+      luck, luckySym, luckCells, six, events: [], spinsLeft: st.spinsLeft,
+    };
     return spinResult;
   };
 
@@ -604,7 +632,15 @@
     if (kind === "666") { take(6); take(7); take(8); }
     else if (kind === "66") {
       const i = pick(st.rng, freeCells);
-      if (i != null) { take(i); const j = [i - 1, i + 1, i - 5, i + 5].find((x) => freeCells.includes(x)); if (j != null) take(j); }
+      if (i != null) {
+        take(i);
+        // i±1 必须同行：否则会把「第2行第1格」和「第1行第5格」配成一对，
+        // 视觉上是斜对角（实测 13.8% 的「66」会跨行错位）。
+        const row = Math.floor(i / 5);
+        const j = [i - 1, i + 1, i - 5, i + 5].find((x) =>
+          freeCells.includes(x) && (Math.abs(x - i) === 5 || Math.floor(x / 5) === row));
+        if (j != null) take(j);
+      }
     } else {
       const i = pick(st.rng, freeCells);
       if (i != null) take(i);
@@ -702,7 +738,16 @@
         if (sym === null) sym = s;
         else if (sym !== s) return null;
       }
-      return sym || CP.WILD_FALLBACK_SYMBOL || "seven";
+      if (sym) return sym;
+      // 整条图案全是万能格：按「当前」价值最高的符号计分。
+      // 旧实现写死 seven，与 data.js 注释「取基础价值最高者」不符 ——
+      // 符号价值会被电话能力/金色修饰词永久改写，写死会让万能流后期变弱。
+      let best = null, bv = -1;
+      for (const s of CP.SYMBOLS) {
+        const v = st.symValues[s.id] || 0;
+        if (v > bv) { bv = v; best = s.id; }
+      }
+      return best || CP.WILD_FALLBACK_SYMBOL || "seven";
     };
     for (const inst of CP.PATTERN_INSTANCES) {
       if (inst.extra && !extra[inst.id]) continue;
@@ -892,6 +937,11 @@
       E.completeDeadline(st, skipped);
       return { paid: true };
     }
+    // 本期一回合都还没打：不允许直接结算。新一期 round = 0、deposited = 0，
+    // 手滑点一下就会立刻重新进入死亡倒计时（死亡倒计时存活后的那一期最容易踩）。
+    if (st.round === 0 && st.deadline > 1) {
+      return { paid: false, blocked: true };
+    }
     // 死亡倒计时
     st.deathCountdown = { roundsLeft: CP.DEATH_COUNTDOWN_ROUNDS, ankhUsed: false };
     st.phase = "roundSetup";
@@ -1012,7 +1062,11 @@
 
   /* =============== 存款 =============== */
   E.deposit = function (st, amount) {
-    amount = Math.min(amount, st.coins);
+    // 超出债务的部分不允许存入。旧实现不封顶，而 completeDeadline 又把 deposited
+    // 直接清零 —— 玩家点「全部存入」（按钮就叫这个，是最自然的操作）时，多存的
+    // 那部分会被凭空吞掉。
+    const room = Math.max(0, st.debt - st.deposited);
+    amount = Math.min(amount, st.coins, room);
     if (amount <= 0) return 0;
     st.coins -= amount;
     st.deposited += amount;
@@ -1071,6 +1125,9 @@
   /* 是否已持有该符文（装备中或存放于抽屉）。
    * 默认每件符文同时只能拥有一件，只有 stackable:true 的消耗型允许叠加。 */
   E.ownsCharm = function (st, id) {
+    // 骷髅是「放在盘面上的残骸」而非装备栏符文，得用 cadaver 状态判断是否已拥有，
+    // 否则会从商店无限重复刷到（买了也不进装备栏，白花券）。
+    if (id === "skull") return !!(st.cadaver && st.cadaver.skull);
     if ((st.charms || []).some((c) => c.id === id)) return true;
     return (st.drawers || []).some((c) => c && c.id === id);
   };
@@ -1106,6 +1163,10 @@
       st.store.unshift({ id: "cigarettes", trait: null, free: false });
     }
     fx(st, "purchase", { charm: inst, def, price });
+    if (def.cadaver) {
+      E.addFeed(st, `${def.name} 被放上了转盘……`, "special");
+      E.checkCadaverComplete(st);
+    }
     touch(st);
     return { ok: true, charm: inst, price, instant };
   };
@@ -1225,6 +1286,10 @@
       deadline: st.deadline, round: st.round });
     E.addFeed(st, "电话先放到一边……");
     if (fc && fc.resp) E.addFeed(st, "「" + fc.resp + "」", "charm");
+    // 真正的「推迟」：本次选项作废，但保留意图，下回合重新响铃重掷（见 E.startRound）。
+    st.phone.deferred = true;
+    st.phone.pending = false;
+    st.phone.options = [];
     // 统一返回值语义：调用方一律看 r.ok，不再依赖 0/1 这种真假值
     return { ok: true, kind: "deferred", count: 0, resp: fc ? fc.resp : null };
   };
@@ -1348,6 +1413,12 @@
     if (!st.hasKey) return null;
     st.ending = st.keyWhite ? "good" : "bad";
     st.phase = "ending";
+    // 「妄自尊大」文案承诺「若成功开门将获得金色拉杆」——旧实现里 goldeneLever
+    // 全文搜不到，是张空头支票。现在成功开门时真正发放（永久收藏品，标题页可见）。
+    if (st.cardId === "delusions" && st.meta && !st.meta.goldenLever) {
+      st.meta.goldenLever = true;
+      E.addFeed(st, "金色拉杆已收入囊中——它在你离开后仍然闪着光。", "special");
+    }
     return st.ending;
   };
 
@@ -1358,11 +1429,17 @@
     const carry = [];
     for (const x of st.drawers) if (x) carry.push(x.id);
     if (st.meta) {
-      st.meta.deaths = (st.meta.deaths || 0) + 1;
+      // 死亡计数只保留 meta.stats.deaths 一份（charms.js 的 mergeStats 已维护），
+      // 旧的 meta.deaths 是冗余第二份，未来极易与 UI 读取的那份漂移。
       st.meta.corpseCarry = null;
       if (carry.length && st.drawersUnlocked > 0) {
-        // 简化：遗留符文转为尸块
-        st.meta.corpseCarry = ["armL", "armR", "legL", "legR"].slice(0, Math.min(4, carry.length));
+        // 「抽屉里留下的一切会成为下一位房客的一部分」：按抽屉里实际遗留的符文
+        // 逐件转成残骸，而不是无脑取前 N 块。骷髅若已在盘面上则一并延续。
+        const pieces = [];
+        if (st.cadaver.skull) pieces.push("skull");
+        const limbs = ["armL", "armR", "legL", "legR"];
+        for (let i = 0; i < carry.length && i < limbs.length; i++) pieces.push(limbs[i]);
+        st.meta.corpseCarry = pieces.length ? pieces : null;
       }
     }
     return st.ending;

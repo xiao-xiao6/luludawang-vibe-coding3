@@ -49,6 +49,12 @@
           onComplete: () => c.remove() });
     }
   }
+  /* 延迟执行一段动效：回调在 safe() 的 try 之外，必须自己再包一层，
+     否则延迟回调里的异常会冒到全局（动效永不影响游戏逻辑）。 */
+  function later(sec, fn) {
+    if (!Fx.on) return;
+    try { gsap.delayedCall(sec, () => { try { fn(); } catch (e) { /* 忽略 */ } }); } catch (e) { /* 忽略 */ }
+  }
 
   /* ---------------- 标题画面：两极氛围 ---------------- */
   const MARQUEE = [
@@ -159,15 +165,14 @@
     const pay = info ? info.querySelector(".payout:not(.dim)") : null;
     if (pay && res.payout > 0 && isFinite(res.payout)) {
       const obj = { v: 0 };
-      gsap.to(obj, { v: res.payout, duration: 0.75, ease: "power1.out",
+      gsap.to(obj, { v: res.payout, duration: 0.75, delay: 0.18, ease: "power1.out",
         onUpdate: () => { pay.textContent = "+" + CP.fmt(Math.round(obj.v)) + " 金币"; } });
     }
-    if (pay && res.payout > 0 && isFinite(res.payout)) {
-      floatNumber(grid, "+" + CP.fmt(res.payout), "win");
-    }
-    if (res.jackpot) { flash("255, 210, 74", 0.38); shake(11); coinRain(16); }
-    if (res.six && res.six.kind === "666") { shake(15); flash("255, 50, 40", 0.32); }
-    if (res.six && res.six.kind === "999") { flash("255, 240, 190", 0.3); coinRain(8); }
+    // 分层演出统一交给 Fx.winLayer（闪光 → 浮空金额 → 金币雨）
+    Fx.winLayer(res, grid);
+    // 666 是「坏消息」，等开奖金额先读出来再砸下来，别和喜报抢焦点
+    if (res.six && res.six.kind === "666") later(0.5, () => { shake(15); flash("255, 50, 40", 0.32); });
+    if (res.six && res.six.kind === "999") flash("255, 240, 190", 0.3);
   });
 
   /* ---------------- 中奖浮空金额 ----------------
@@ -187,6 +192,23 @@
         { autoAlpha: 1, scale: 1.12, yPercent: -90, duration: 0.34, ease: "back.out(2.2)" })
       .to(el, { autoAlpha: 0, yPercent: -190, scale: 0.95, duration: 0.75, delay: 0.35, ease: "power1.out" });
   }
+
+  /* ---------------- 开奖演出：分层，而不是六层同时上 ----------------
+   * 旧实现里一次大满贯会同时触发 flash + shake + coinRain + 浮空金额 + 连击飘字 +
+   * 网格缩放，视觉焦点会散，玩家不知道该看哪里。现在按时间轴分层：
+   *   第1层 0.00–0.30s  闪光 + 震动（建立「中了」的第一印象）
+   *   第2层 0.20–1.20s  浮空金额跟上（把注意力引到数字）
+   *   第3层 0.50–1.50s  金币雨收尾（氛围铺满）
+   *   连击飘字只在 3 连以上出现（见 Fx.combo）
+   */
+  Fx.winLayer = safe(function (res, grid) {
+    if (res.jackpot) { flash("255, 210, 74", 0.38); shake(11); }
+    else { flash("255, 210, 74", 0.26); }
+    if (res.payout > 0 && isFinite(res.payout)) {
+      later(0.2, () => floatNumber(grid, "+" + CP.fmt(res.payout), "win"));
+      later(0.5, () => coinRain(res.jackpot ? 18 : 7));
+    }
+  });
 
   /* ---------------- 交互反馈 ---------------- */
   Fx.redButton = safe(function () {
@@ -226,7 +248,7 @@
   });
 
   Fx.guide = safe(function () {
-    gsap.from("#guide-card h2, #guide-card h3, #guide-card p",
+    gsap.from("#guide-card h2, #guide-card summary, #guide-card p",
       { autoAlpha: 0, y: 14, stagger: 0.035, duration: 0.32, clearProps: "transform,opacity,visibility" });
   });
 
@@ -258,10 +280,9 @@
   /* ---------------- 开奖情绪层 ---------------- */
   Fx.bigWin = safe(function (level) {
     const lv = level || 1;
-    flash("255, 210, 74", lv >= 2 ? 0.42 : 0.3);
-    shake(lv >= 2 ? 13 : 7);
-    coinRain(lv >= 2 ? 22 : 10);
     const grid = $id("slot-grid");
+    // 只负责「网格被砸一下」这一层；闪光/震动/浮字/金币雨统一由 Fx.winLayer 分层调度，
+    // 避免同一次中奖出现两套金币雨抢焦点。
     if (grid) gsap.fromTo(grid, { scale: lv >= 2 ? 1.055 : 1.03 },
       { scale: 1, duration: 0.62, ease: "elastic.out(1, 0.5)", clearProps: "scale" });
   });

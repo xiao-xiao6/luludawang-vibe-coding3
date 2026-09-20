@@ -8,7 +8,30 @@
   const E = CP.Engine;
   const $ = (id) => document.getElementById(id);
 
-  const SYM_EMOJI = { lemon: "🍋", cherry: "🍒", clover: "🍀", bell: "🔔", diamond: "💎", treasure: "🧰", seven: "7️⃣" };
+  /* ---------------- 盘面图标：双色 SVG，不再用彩色 3D emoji ----------------
+   * 为什么换掉 emoji：emoji 的饱和度/体积感/光影方向全都和暗色 CRT 工业风相反，
+   * 一个亮黄塑料柠檬会把 .slot-cell 的 inset 凹陷感直接盖掉；而且 emoji 在
+   * Windows / macOS / Android 上渲染完全不同，精心调的 font-size 在别人机器上是另一个大小。
+   * 配色取 CP.SYM_COLORS（和 style.css 的琥珀/铁锈/混凝土同一套，唯一冷色仍是四叶草绿）。 */
+  const ICON_PATHS = {
+    lemon: '<ellipse cx="12" cy="13.4" rx="7.6" ry="6.2" fill="M"/><ellipse cx="12" cy="13.4" rx="7.6" ry="6.2" fill="none" stroke="S" stroke-width="1.5"/><path d="M12.4 7.4c1.6-3 4.6-3.8 7-3-1.4 2.6-4 3.6-7 3z" fill="S"/>',
+    cherry: '<circle cx="8.6" cy="15.2" r="4.8" fill="M"/><circle cx="15.9" cy="16.4" r="4" fill="S"/><path d="M8.6 10.6c1-4 4-6.2 8.2-6" fill="none" stroke="M" stroke-width="1.6" stroke-linecap="round"/>',
+    clover: '<circle cx="12" cy="8.4" r="3.3" fill="M"/><circle cx="8.2" cy="12.8" r="3.3" fill="M"/><circle cx="15.8" cy="12.8" r="3.3" fill="M"/><path d="M12 12.8V21" stroke="S" stroke-width="1.8" stroke-linecap="round"/>',
+    bell: '<path d="M12 3.4c3.6 0 6 2.8 6 6.4v4.6l1.6 2.2H4.4L6 14.4V9.8c0-3.6 2.4-6.4 6-6.4z" fill="M" stroke="S" stroke-width="1.4"/><circle cx="12" cy="19.6" r="1.9" fill="S"/>',
+    diamond: '<path d="M12 3.2l7 6.1-7 11.5-7-11.5z" fill="M" stroke="S" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 9.3h14" stroke="S" stroke-width="1.2"/>',
+    treasure: '<path d="M3.4 10c0-3.3 3.8-5.8 8.6-5.8s8.6 2.5 8.6 5.8" fill="S"/><rect x="3.4" y="9.6" width="17.2" height="9.8" rx="1.4" fill="M" stroke="S" stroke-width="1.5"/><rect x="10.6" y="12.2" width="2.8" height="4.2" fill="S"/>',
+    seven: '<path d="M5.6 5.6h12.8l-7.4 13.8" fill="none" stroke="M" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>',
+    six: '<circle cx="12" cy="12" r="8.4" fill="none" stroke="S" stroke-width="1.5"/><path d="M15.6 6.4c-4.2 2.6-5.6 6.6-4.6 11.4" fill="none" stroke="M" stroke-width="2.6" stroke-linecap="round"/>',
+  };
+  function symIcon(id) {
+    if (!id) return "";
+    const path = ICON_PATHS[id];
+    if (!path) return "";
+    const c = (CP.SYM_COLORS && CP.SYM_COLORS[id]) || { main: "#ffb347", shade: "#7a5426" };
+    const svgBody = path.replace(/"M"/g, '"' + c.main + '"').replace(/"S"/g, '"' + c.shade + '"');
+    return '<svg class="sym-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      svgBody + "</svg>";
+  }
   const RARITY_ZH = { Common: "普通", Uncommon: "罕见", Rare: "稀有", Epic: "史诗", Legendary: "传说" };
   const SCREENS = ["screen-title", "screen-cards", "screen-game", "screen-end", "screen-guide"];
   const SAVE_KEY = "cloverpit_run_v1"; // 局内存档（刷新/关页后续玩）
@@ -198,12 +221,22 @@
       if (!st) { this.clearRun(); this.refreshContinue(); return; }
       this.st = st;
       this.spinning = false;
-      this.lastSpin = null;
+      // 重建上一转摘要：否则刷新后高亮与结果文字会与盘面不同步
+      this.lastSpin = st.lastSpinData || null;
       this.selCharmUid = null;
       this._shapes = null;
+      this._seenSig = null;
       this.showScreen("screen-game");
       this.markSeenCharms();
-      $("spin-info").innerHTML = '<div class="dim">继续上一局——拉下拉杆，开始旋转……</div>';
+      if (this.lastSpin) {
+        this.renderBoard();
+        $("spin-info").innerHTML = '<div class="dim">上一转：' +
+          (this.lastSpin.scored && this.lastSpin.scored.length
+            ? this.lastSpin.scored.map((r) => r.name + "×" + r.triggers).join(" · ") + " · +" + CP.fmt(this.lastSpin.payout) + " 金币"
+            : "……什么都没有") + "</div>";
+      } else {
+        $("spin-info").innerHTML = '<div class="dim">继续上一局——拉下拉杆，开始旋转……</div>';
+      }
       this.feed("—— 续接存档 · 第 " + st.deadline + " 期 · 债务 " + CP.fmt(st.debt) + " 金币 ——", "warn");
       this.renderAll();
       Sfx.spin();
@@ -218,15 +251,23 @@
         const t = ev.target;
         if (!t || !t.closest) return;
         if (t.closest(".charm-card, .mem-card, .phone-opt, .drawer-slot")) return;
-        if (t.closest("button")) return; // 按钮自带的 title 交给浏览器悬停提示，别叠气泡
         const el = t.closest("[data-tip], [title]");
         if (!el) return;
         const text = el.getAttribute("data-tip") || el.getAttribute("title");
-        if (text) this.showTip(el, text);
+        if (!text) return;
+        // 按钮也要能看说明：手机没有悬停，原生 title 在触屏上等于不存在。
+        // #btn-red / #btn-end-deadline 这类机制说明，触屏玩家一个字都看不到才是真问题。
+        // 点击按钮本身的功能照常执行，气泡只是补一层说明。
+        this.showTip(el, text, el.closest("button") ? 1800 : 2600);
       }, true);
     },
 
-    showTip(el, text) {
+    hideTip() {
+      if (this._tipT) { clearTimeout(this._tipT); this._tipT = null; }
+      if (this._tip) this._tip.classList.remove("on");
+    },
+
+    showTip(el, text, dur) {
       let tip = this._tip;
       if (!tip) { tip = document.createElement("div"); tip.className = "fx-tip"; document.body.appendChild(tip); this._tip = tip; }
       tip.textContent = text;
@@ -239,7 +280,7 @@
       tip.style.left = left + "px";
       tip.style.top = Math.max(10, r.top - 8) + "px";
       clearTimeout(this._tipT);
-      this._tipT = setTimeout(() => tip.classList.remove("on"), 2600);
+      this._tipT = setTimeout(() => tip.classList.remove("on"), dur || 2600);
     },
 
     bind() {
@@ -328,6 +369,7 @@
     showModal(id) {
       const m = $(id);
       if (!m) return;
+      this.hideTip(); // 旧气泡不能飘在新弹窗上面
       this.lastFocus = document.activeElement && document.activeElement !== document.body
         ? document.activeElement : this.lastFocus;
       m.classList.remove("hidden");
@@ -359,6 +401,11 @@
     switchTab(name) {
       document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
       ["symbols", "patterns", "log"].forEach((n) => $("tab-" + n).classList.toggle("hidden", n !== name));
+      // renderAll 现在只刷「当前可见」的板，所以切回来时必须补刷一次，
+      // 否则切到图案板 / 日志会看到空内容。
+      if (name === "symbols") this.renderSymbols();
+      else if (name === "patterns") this.renderPatterns();
+      else if (name === "log") this.renderLog();
       CP.Fx.tabIn($("tab-" + name));
     },
 
@@ -372,7 +419,8 @@
         "🃏 记忆卡 " + m.cards.length + " / " + CP.MEMORY_CARDS.length,
         "🗄 抽屉 " + m.drawersUnlocked + " / 4",
         "📖 图鉴已收录 " + (m.seen ? m.seen.length : 0) + " / " + total,
-      ].join("<br>");
+        m.goldenLever ? "🏆 金色拉杆 · 已到手" : null,
+      ].filter(Boolean).join("<br>");
     },
 
     showCardSelect() {
@@ -389,6 +437,7 @@
           '<div class="mc-name">' + c.name + "</div>" +
           '<div class="mc-desc">' + c.desc + "</div>" +
           (c.dialogue ? '<div class="mc-dlg">「' + c.dialogue + "」</div>" : "");
+        div.setAttribute("aria-label", c.name + "：" + c.desc);
         div.onclick = () => this.startRun(id);
         grid.appendChild(div);
       }
@@ -403,6 +452,7 @@
       this.lastSpin = null;
       this.selCharmUid = null;
       this._shapes = null;
+      this._seenSig = null; // 新一局：图鉴签名缓存必须重置，否则可能跳过首次扫描
       this.showScreen("screen-game");
       this.markSeenCharms();
       $("spin-info").innerHTML = '<div class="dim">拉下拉杆，开始旋转……</div>';
@@ -424,16 +474,23 @@
       this.renderCharmRow();
       this.renderStore();
       this.renderDrawers();
-      this.renderSymbols();
-      this.renderPatterns();
-      this.renderLog();
+      // 符号板 / 图案板 / 日志只在「当前可见」时重刷：
+      // 每次旋转都全量重刷 8 个区块在赠送旋转密集时（硬上限 60 次/回合）会明显卡。
+      if (!this.tabHidden("symbols")) this.renderSymbols();
+      if (!this.tabHidden("patterns")) this.renderPatterns();
+      if (!this.tabHidden("log")) this.renderLog();
       this.renderKeyControls();
       $("btn-spin").disabled = !(st.phase === "spinning" && !this.spinning && st.spinsLeft > 0);
       $("btn-red").disabled = !(st.phase === "spinning" && !this.spinning);
-      $("btn-end-deadline").disabled = st.phase !== "roundSetup" || !!st.deathCountdown || this.spinning;
+      $("btn-end-deadline").disabled = st.phase !== "roundSetup" || !!st.deathCountdown || this.spinning || (st.round === 0 && st.deadline > 1);
       document.querySelectorAll(".dep").forEach((b) => { b.disabled = this.spinning; });
       $("btn-restock").disabled = this.spinning;
       this.scheduleSave();
+    },
+
+    tabHidden(name) {
+      const el = $("tab-" + name);
+      return !el || el.classList.contains("hidden");
     },
 
     renderHud() {
@@ -442,8 +499,13 @@
       $("hud-tickets").textContent = st.tickets;
       $("hud-deadline").textContent = "#" + st.deadline;
       $("hud-round").textContent = Math.min(st.round, st.roundsPerDeadline) + "/" + st.roundsPerDeadline;
-      $("hud-spins").textContent = st.phase === "spinning" ? st.spinsLeft : "—";
-      $("hud-luck").textContent = this.lastSpin ? "+" + this.lastSpin.luck.total : "—";
+      // 非旋转阶段不显示破折号（信息量为零）：改成本回合「剩余 / 上限」
+      $("hud-spins").textContent = st.phase === "spinning"
+        ? st.spinsLeft + " / " + st.spinsPerRound
+        : (st.spinsPerRound ? "0 / " + st.spinsPerRound : "—");
+      // 幸运值保留上一转的数字：回合切换后变回「—」会让玩家失去参照
+      const luck = this.lastSpin ? this.lastSpin.luck.total : null;
+      $("hud-luck").textContent = luck == null ? "—" : "+" + luck;
       $("machine-luck").textContent = st.flags.redNext ? "⚠ 6 的气息……" : "";
     },
 
@@ -472,11 +534,14 @@
         if (this.lastSpin && this.lastSpin.luckCells && this.lastSpin.luckCells.includes(i)) cls.push("lucky");
         if (isSix) cls.push("six");
         const mod = st.boardMods ? st.boardMods[i] : null;
-        const title = mod ? CP.MODIFIERS[mod].name + "：" + CP.MODIFIERS[mod].desc : "";
+        const symName = isSix ? "6" : sym && CP.SYMBOL_BY_ID[sym] ? CP.SYMBOL_BY_ID[sym].name : "空格";
+        const title = mod ? CP.MODIFIERS[mod].name + "：" + CP.MODIFIERS[mod].desc : symName;
         // title 供桌面悬停；data-tip 让触屏点一下也能看到说明
         const tipAttr = title ? ' title="' + title + '" data-tip="' + title + '"' : "";
-        html += '<div class="' + cls.join(" ") + '"' + tipAttr + '>' +
-          '<span class="cs">' + (isSix ? "6️⃣" : sym ? SYM_EMOJI[sym] || "·" : "·") + "</span>" +
+        // 读屏用户需要知道「第几格、什么符号」，否则只能听到一串图形名称
+        const aria = ' role="img" aria-label="第 ' + (i + 1) + " 格 " + symName + '"';
+        html += '<div class="' + cls.join(" ") + '"' + tipAttr + aria + '>' +
+          '<span class="cs">' + symIcon(isSix ? "six" : sym) + "</span>" +
           (mod ? '<i class="mod m-' + mod + '"></i>' : "") +
           "</div>";
       }
@@ -499,10 +564,10 @@
           html += '<button id="btn-mode-most" class="btn btn-amber" title="金币不够一整轮：按比例折算旋转次数，花费身上全部金币">欠转 · 约 ' + n + " 次（花费身上全部 " + CP.fmt(st.coins) + " 金币）</button>";
         } else {
           const n = st.cardId === "fixation" ? 1 : st.cardId === "screen" ? 21 : 7;
-          html += '<button id="btn-mode-most" class="btn btn-amber">' + (st.cardId === "fixation" ? "旋转" : "多旋转") + " · " + n + " 次（花费 " + CP.fmt(st.leverCost) + " 金币）</button>";
+          html += '<button id="btn-mode-most" class="btn btn-amber">' + (st.cardId === "fixation" ? "旋转" : "标准旋转") + " · " + n + " 次（花费 " + CP.fmt(st.leverCost) + " 金币）</button>";
           // 执念卡每回合固定 1 次旋转，「少旋转」不会更少只会白赚券——直接隐藏
           if (st.cardId !== "fixation") {
-            html += '<button id="btn-mode-fewer" class="btn" title="同样的拉杆费用，旋转次数更少，但回合结算时 +3 幸运券">少旋转 · 3 次（花费 ' + CP.fmt(st.leverCost) + " 金币 · 结算 +3 券）</button>";
+            html += '<button id="btn-mode-fewer" class="btn" title="同样的拉杆费用，旋转次数更少，但回合结算时 +3 幸运券">精简旋转 · 3 次（花费 ' + CP.fmt(st.leverCost) + " 金币 · 结算 +3 券）</button>";
           }
         }
       } else if (st.phase === "spinning") {
@@ -623,9 +688,12 @@
     renderStore() {
       const st = this.st;
       const cost = Math.ceil(st.baseRestockCost * Math.pow(CP.RESTOCK_GROWTH, st.storeRestockUses));
+      // 补货费是 ×1.2 阶梯增长（第3期 6→20、第5期 69→300、第10期 43000→375000），
+      // 只显示当前价玩家没法做「现在补还是等下期补」的决策，所以把下一档也标出来。
+      const next = Math.ceil(st.baseRestockCost * Math.pow(CP.RESTOCK_GROWTH, st.storeRestockUses + 1));
       $("store-info").textContent = st.freeRestocks > 0
-        ? "免费补货 ×" + st.freeRestocks
-        : "补货费 " + CP.fmt(cost) + " 金币";
+        ? "免费补货 ×" + st.freeRestocks + "（下次 " + CP.fmt(next) + "）"
+        : "补货费 " + CP.fmt(cost) + " 金币 → 下次 " + CP.fmt(next);
       const row = $("store-row");
       row.innerHTML = st.store.map((e, i) => this.storeCardHTML(e, i)).join("") ||
         '<div class="dim small">商店空空如也……</div>';
@@ -676,7 +744,7 @@
       const rows = E.symbolWeightsView(st);
       $("tab-symbols").innerHTML = rows.map((r) =>
         '<div class="sym-row">' +
-        '<span class="sym-ico">' + SYM_EMOJI[r.id] + "</span>" +
+        '<span class="sym-ico">' + symIcon(r.id) + "</span>" +
         '<span class="sym-name">' + r.name + "</span>" +
         '<span class="sym-val">' + CP.fmt(st.symValues[r.id]) + "</span>" +
         '<span class="sym-prob">' + (r.prob * 100).toFixed(1) + "%</span>" +
@@ -771,6 +839,17 @@
 
       const res = E.spin(st);
       const target = (res && res.board) || st.board;
+      // 免费回合（身无分文）没有任何收益：跳过整段滚动演出，直接揭晓。
+      // 玩家此刻已是最惨状态，需要的是「快速重启」，不是 17 秒纯动画换 1 张券。
+      if (st.freeRound) {
+        for (let i = 0; i < 15; i++) {
+          const cell = cells[i];
+          if (cell) cell.classList.remove("hit", "lucky", "rolling", "settled");
+        }
+        Sfx.tick(0.4);
+        this.finishSpin(res);
+        return;
+      }
       const rolling = [];
       for (let i = 0; i < 15; i++) {
         const cell = cells[i];
@@ -800,8 +879,8 @@
             if (!cell) continue;
             // 只改符号层：直接写 textContent 会把修饰词彩点（<i class="mod">）一起抹掉
             const cs = cell.querySelector(".cs");
-            const face = SYM_EMOJI[ids[Math.floor(Math.random() * ids.length)]];
-            if (cs) cs.textContent = face; else cell.textContent = face;
+            const face = symIcon(ids[Math.floor(Math.random() * ids.length)]);
+            if (cs) cs.innerHTML = face; else cell.innerHTML = face;
           }
         }
         if (grid.style) grid.style.setProperty("--rollDur", (0.08 + (1 - sp) * 0.34).toFixed(3) + "s");
@@ -818,7 +897,7 @@
             cell.classList.remove("rolling");
             if (st.sixCells.includes(i)) continue;
             const cs = cell.querySelector(".cs");
-            if (cs) cs.textContent = SYM_EMOJI[target[i]] || "·";
+            if (cs) cs.innerHTML = symIcon(target[i]);
             cell.classList.add("settled");
             setTimeout(() => cell.classList.remove("settled"), 430);
           }
@@ -953,6 +1032,7 @@
       if (!st || st.deathCountdown) return;
       const r = E.tryEndDeadline(st);
       if (r.paid) this.showDeadlineSummary();
+      else if (r.blocked) this.feed("本期还没打过任何回合——先拉一次拉杆再结算吧", "warn");
       this.renderAll();
     },
 
@@ -1009,9 +1089,14 @@
         this.feed("购买了 " + CP.CHARMS[r.charm.id].name + "（" + r.price + " 券）" + (r.instant ? " · 已即时生效" : ""), "good");
         Sfx.coin();
         this.markSeenCharms();
+        const uid = r.charm && r.charm.uid;
         this.renderAll();
-        // instant 类不入装备栏，所以弹跳要落在商店位上，而不是栏尾
-        CP.Fx.pop(document.querySelector('.store-card.owned, .store-card[data-slot="' + i + '"]') || $("charm-row").lastElementChild);
+        // 先取元素再渲染：renderAll 会重排货架，[data-slot="i"] 上已经是下一件商品，
+        // 旧写法会把「买到手」的 pop 动画打在错误的卡上。
+        const target = r.instant
+          ? $("store-row")
+          : document.querySelector('.charm-card[data-uid="' + uid + '"]');
+        CP.Fx.pop(target || $("charm-row").lastElementChild);
         return;
       }
       if (r.reason === "tickets") this.feed("幸运券不够……", "warn");
@@ -1195,13 +1280,20 @@
     markSeenCharms() {
       const m = this.meta;
       if (!m.seen) m.seen = [];
+      // 先算签名：没有新道具时直接返回，不再每次旋转都遍历 + 拼 Set + 可能写 localStorage
+      const st = this.st;
+      const sig = st
+        ? st.charms.map((c) => c.id).join() + "|" + st.drawers.map((d) => (d ? d.id : "")).join() + "|" + st.store.map((e) => e.id).join()
+        : "";
+      if (sig === this._seenSig) return false;
+      this._seenSig = sig;
       const set = new Set(m.seen);
       let changed = false;
       const add = (id) => { if (id && CP.CHARMS[id] && !set.has(id)) { set.add(id); changed = true; } };
-      if (this.st) {
-        for (const c of this.st.charms) add(c.id);
-        for (const d of this.st.drawers) if (d) add(d.id);
-        for (const e of this.st.store) add(e.id);
+      if (st) {
+        for (const c of st.charms) add(c.id);
+        for (const d of st.drawers) if (d) add(d.id);
+        for (const e of st.store) add(e.id);
       }
       if (changed) { m.seen = [...set]; this.saveMeta(); }
       return changed;
@@ -1384,6 +1476,18 @@
         "<h3>💀 尸块、钥匙与结局</h3>" +
         "<p>集齐 5 块尸块并解锁全部 4 个抽屉后，announcer 会递来钥匙：<b>白钥匙</b>（保持神圣）→ 电梯上升的好结局；<b>暗红钥匙</b>→ 门后无门的坏结局；还不上债 = 坠入深渊。死亡后抽屉遗留会变成下一位「房客」的尸块。</p>" +
         '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）。空格键 = 拉杆（焦点在按钮上时空格属于那个按钮）；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；点击幸运符看详情/转卖/入抽屉；HUD 的「☎ 通话记录」可以回看你接听、挂断、推迟过的每一通电话（含对方的回应）；「🔊 音效」可以一键静音；弹窗按 Esc 或点关闭即可收起；<b>同一种幸运符同时只能持有一件</b>（不占容量的消耗品会在图鉴里标「可叠加」，买到即生效、不进装备栏）；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
+      // 指南内容 2000+ 字，手机上要滚很久：按 <h3> 分节折叠（首节默认展开）。
+      // 不改内容本身，只在渲染后重组 DOM，避免两处文案不同步。
+      const gcard = $("guide-card");
+      const parts = gcard.innerHTML.split(/(?=<h3>)/);
+      const head = parts.shift();
+      gcard.innerHTML = head + parts.map((p, i) => {
+        const m = p.match(/^<h3>([\s\S]*?)<\/h3>/);
+        const title = m ? m[1] : "";
+        const body = m ? p.slice(m[0].length) : p;
+        return '<details class="g-sec"' + (i === 0 ? " open" : "") + ">" +
+          "<summary>" + title + "</summary><div class=\"g-body\">" + body + "</div></details>";
+      }).join("");
       CP.Fx.guide();
     },
   };

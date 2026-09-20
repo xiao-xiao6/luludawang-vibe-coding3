@@ -22,6 +22,21 @@
   CP.SYMBOL_BY_ID = Object.fromEntries(CP.SYMBOLS.map((s) => [s.id, s]));
   CP.WEIGHT_UNIT = 0.8; // 每个(+1)加0.8权重
 
+  /* ---------------- 符号配色（盘面 SVG 图标用） ----------------
+   * 和 style.css 的配色规范同一套：琥珀 / 铁锈 / 混凝土 / 深黑，
+   * 唯一冷色点缀仍是四叶草的青柠绿。盘面符号全部走这里的双色，
+   * 不再用彩色 3D emoji（跨平台渲染不一致，且和暗色工业风冲突）。 */
+  CP.SYM_COLORS = {
+    lemon:    { main: "#ffd45e", shade: "#b8762a" },
+    cherry:   { main: "#e05a34", shade: "#8a4a2a" },
+    clover:   { main: "#9dbf2e", shade: "#5c7a1a" },
+    bell:     { main: "#e8b93c", shade: "#8a5426" },
+    diamond:  { main: "#e6d9bc", shade: "#9a8f78" },
+    treasure: { main: "#c98a3a", shade: "#7a5426" },
+    seven:    { main: "#ffb347", shade: "#8a4a1a" },
+    six:      { main: "#ff5040", shade: "#8a1f10" },
+  };
+
   /* ---------------- 图案（3×5 转盘，官方基础倍率） ----------------
    * 头奖加权（2026-09-18）：原表实测是「广度驱动」——横/竖/斜三连合计占
    * 72.6% 赔付，天眼 + 大满贯只有 1.51%。为让顶级图案更有存在感，只上调这两个
@@ -44,6 +59,8 @@
     ABOVE: "上三角", BELOW: "下三角",
     EYE: "天眼", JACKPOT: "大满贯",
   };
+  /* 上下镜像的图案对：理论上长期赔付占比应收敛（rtp_probe 大样本复核用） */
+  CP.MIRROR_PAIRS = [["ZIG", "ZAG"], ["ABOVE", "BELOW"]];
   /* ≤3符号图案 / ≥4符号图案（电话能力分组用，官方分组） */
   CP.SMALL_PATTERNS = ["HOR-S", "VER-S", "DIAG-S", "HOR", "VER", "DIAG"];
   CP.BIG_PATTERNS = ["HOR-L", "HOR-XL", "ZIG", "ZAG", "ABOVE", "BELOW", "EYE", "JACKPOT"];
@@ -107,11 +124,15 @@
   CP.PATTERN_INSTANCES = CP.buildPatternInstances();
 
   /* ---------------- 期望值(EV)基线文档 ----------------
-   * 数值来源：_test/rtp_probe.js 实测（120 种子 × 40 回合，纯图案引擎）
+   * 数值来源：_test/rtp_probe.js 实测（800 种子 × 40 回合 = 224,000 次旋转）
+   *   —— 数字由 `node _test/rtp_probe.js 40 800` 直接生成，改完倍率请重跑刷新本段。
    *
-   *   基础 RTP（图案赔付 ÷ 拉杆支出） ≈ 6.93     图案命中率 ≈ 43.3%
-   *   每回合 7 次旋转；每次旋转成本 1 金币，平均产出 ≈ 6.93 金币
-   *   赔付结构：横/竖/斜三连合计 ≈ 72.6%，天眼 + 大满贯合计 ≈ 1.51%
+   *   基础 RTP（图案赔付 ÷ 拉杆支出） ≈ 7.06     图案命中率 ≈ 43.1%
+   *   每回合 7 次旋转；每次旋转成本 1 金币，平均产出 ≈ 7.06 金币
+   *   赔付结构：横/竖/斜三连合计 ≈ 71.7%，天眼 + 大满贯合计 ≈ 1.9%
+   *   镜像对复核（大样本下已收敛，无系统性偏差）：
+   *     ZIG 2.32% / ZAG 2.72%；ABOVE 1.63% / BELOW 1.50%
+   *   （旧注释的 6.93 / 72.6% / 1.51% 是 EYE 8→14、JACKPOT 10→25 之前的旧值，已作废）
    *
    * 口径说明：该探针把金币补足以隔离「破产」干扰，且只跑第 1 期（不推进 666），
    *           所以它是「基础图案引擎的回报率」，不是全局 RTP，属有意隔离测量。
@@ -175,15 +196,17 @@
     golden:     { name: "金色",   color: "#ffd94a", desc: "计分时该符号价值 +基础值（永久）" },
     token:      { name: "代币",   color: "#c9a86a", desc: "计分时获得当前利息一半的金币" },
     ticket:     { name: "票券",   color: "#8ee08a", desc: "计分时 +1 幸运券" },
-    repetition: { name: "复现",   color: "#7fd8ff", desc: "包含该符号的图案额外触发一次" },
+    repetition: { name: "复现",   color: "#ffb347", desc: "包含该符号的图案额外触发一次" },
     battery:    { name: "电池",   color: "#ffe066", desc: "计分时随机红按钮符文 +1 能量" },
-    chain:      { name: "锁链",   color: "#d8a8ff", desc: "计分时该图案价值 +基础值（永久）" },
+    chain:      { name: "锁链",   color: "#e0a060", desc: "计分时该图案价值 +基础值（永久）" },
     /* 「万能」（百搭）修饰词：口径见 _research/parsheet13_采纳建议.md §3 P0-2 ——
      * 连线格 = 该符号格 + 万能格；一条图案里出现两种以上非万能符号则不成立
      * （万能不能弥合两个不同符号）。「大图案吞并小图案」的包含规则保持不变。 */
-    wild:       { name: "万能",   color: "#c8f0ff", desc: "计分时可替代该图案中的任意符号" },
+    wild:       { name: "万能",   color: "#e6d9bc", desc: "计分时可替代该图案中的任意符号" },
   };
-  /* 整条图案全是万能格时的计分符号：取基础价值最高者 */
+  /* 整条图案全是万能格时的最后兼底符号。
+   * 实际优先取「当前价值最高」的符号（engine.js 的 resolveSym 动态计算，
+   * 符号价值会被电话能力/金色永久改写）；本常量仅在异常情况下兼底。 */
   CP.WILD_FALLBACK_SYMBOL = "seven";
 
   /* ---------------- 特性（Traits，官方7种） ---------------- */
@@ -193,8 +216,8 @@
     devious:    { name: "阴险", color: "#ff5c5c", cost: -1, desc: "出现 666 的概率 +0.6%" },
     florid:     { name: "繁茂", color: "#b8e066", cost: 1,  desc: "每期结束 +3 幸运券" },
     gambler:    { name: "赌徒", color: "#7ee08a", cost: 1,  desc: "每期获得 1 次免费补货" },
-    obsessive:  { name: "执念", color: "#7fd8ff", cost: 3,  desc: "最后一个图案额外触发一次" },
-    speculative:{ name: "投机", color: "#ffb3d1", cost: 2,  desc: "利息 +3%" },
+    obsessive:  { name: "执念", color: "#ffb347", cost: 3,  desc: "最后一个图案额外触发一次" },
+    speculative:{ name: "投机", color: "#d9a441", cost: 2,  desc: "利息 +3%" },
   };
 
   /* ---------------- 电话能力（普通24/红色8/神圣8） ----------------
@@ -301,11 +324,11 @@
     { id: "erased",     name: "抹除的记忆卡", rarity: "Common",    desc: "无效果。正常游玩。", dialogue: null },
     { id: "desperate",  name: "绝望搜索",     rarity: "Rare",      desc: "商店只有3件符文，但每期开始时获得2次免费补货。", dialogue: "你当时到底在找什么？" },
     { id: "fixation",   name: "执念",         rarity: "Rare",      desc: "每期固定7回合，但每回合只有1次旋转。提前结束本期每跳过回合仅+2券。", dialogue: "你绝对是钻牛角尖了！" },
-    { id: "screen",     name: "屏幕成瘾",     rarity: "Epic",      desc: "每期只有1回合，但可从21次旋转开始。回合券翻倍。开局27金币、5券。", dialogue: "你众多问题之一。" },
+    { id: "screen",     name: "屏幕成瘾",     rarity: "Epic",      desc: "每期只有 1 回合（回合数只有普通卡的 1/3），但每回合 21 次旋转、回合结算券翻倍。开局 27 金币、5 券。", dialogue: "你众多问题之一。" },
     { id: "cold",       name: "冷淡的感情",   rarity: "Rare",      desc: "开局12券，但整局每回合结算券为0。", dialogue: "拜托，别对我敞开心扉！" },
-    { id: "wounds",     name: "旧伤",         rarity: "Uncommon",  desc: "债务难度降低50%，但开局仅存入15金币。", dialogue: "许多记忆，许多人生！" },
+    { id: "wounds",     name: "旧伤",         rarity: "Uncommon",  desc: "债务难度降低50%，但开局身无分文（仅预存15金币到ATM）。", dialogue: "许多记忆，许多人生！" },
     { id: "bullies",    name: "霸凌者的最爱", rarity: "Rare",      desc: "每期结束时若装备6+符文则随机弃置1件，并获得2次免费补货。", dialogue: "你在叫我霸凌者？" },
-    { id: "delusions",  name: "妄自尊大",     rarity: "Rare",      desc: "债务目标 ×2。若成功开门将获得金色拉杆。", dialogue: "你还真是妄想！" },
+    { id: "delusions",  name: "妄自尊大",     rarity: "Rare",      desc: "债务目标 ×2。若成功开门（白钥匙/暗红钥匙均算）将获得金色拉杆。", dialogue: "你还真是妄想！" },
     { id: "choice",     name: "重要抉择",     rarity: "Uncommon",  desc: "「多旋转」使该回合666概率×2；「少旋转」使其减半。", dialogue: "你只做过一两次那种选择，对吧？" },
     { id: "recovery",   name: "康复尝试",     rarity: "Rare",      desc: "666出现概率×2。触发大满贯时，追回本回合因666损失的全部金币。", dialogue: "我说这是许多次失败的尝试！" },
     { id: "lessons",    name: "人生课",       rarity: "Rare",      desc: "每期结束时：随机桌面符文获得「阴险」，随机抽屉符文获得随机特性。", dialogue: "你还没吸取教训吗？" },

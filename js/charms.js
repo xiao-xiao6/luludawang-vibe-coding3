@@ -216,7 +216,8 @@
     },
   });
   def("dark_lotus", "黑暗莲花", "Legendary", 3, "符号倍率 +X（X = 桌上所有符文转卖价值的一半）。", {
-    unlock: (m) => (m.stats.discards || 0) >= 120,
+    // 旧值与 the_collector 完全重复（都是 discards >= 120），两件传说同时解锁、缺少梯度
+    unlock: (m) => (m.stats.discards || 0) >= 200,
     hooks: {
       derived(c, st, d) {
         let v = 0;
@@ -954,7 +955,11 @@
         stacks: d.stacks0 || 0,
         f: {},
       };
-      if (d.trigger === "instant" && d.instant) {
+      // cadaver（骷髅）不是「装备栏符文」，但它同样是「买到即生效」：
+      // 旧写法只认 trigger === "instant"，导致 skull 的 instant() 永不执行 ——
+      // 玩家花券买下、装备栏 0 件、st.cadaver.skull 仍为 false，
+      // 尸块永远凑不齐 5/5，钥匙提议/好结局/坏结局整条链不可达。
+      if ((d.trigger === "instant" || d.cadaver) && d.instant) {
         try { d.instant(st, inst); } catch (e) { console.warn("[charm] " + id + " 即时效果异常", e); }
       }
       return inst;
@@ -972,7 +977,8 @@
       const pool = [];
       for (const id in CH) {
         const d = CH[id];
-        if (d.cadaver && id !== "skull") continue;
+        // 骷髅是唯一可入池的残骸；已经拥有骷髅后就不该再出货（否则买了个寂寞）
+        if (d.cadaver && (id !== "skull" || (st.cadaver && st.cadaver.skull))) continue;
         if (banned.has(id)) continue;
         if (!d.stackable && owned.has(id)) continue;
         if (id === "cardboard_house" && st.flags.cardboardUsed) continue;

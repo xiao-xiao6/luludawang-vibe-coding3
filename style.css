@@ -30,7 +30,9 @@ body {
     radial-gradient(900px 520px at 92% 108%, #1d1712 0%, transparent 55%),
     var(--bg);
   color: var(--text);
-  font-family: Consolas, "Courier New", "Noto Sans Mono CJK SC", monospace;
+  /* 中文等宽字体链：Consolas / Courier New 都不含中文，Windows 上会回退到非等宽字体，
+     让「终端/档案」的排版气质当场崩掉。补上 Sarasa Mono SC（更悲）与 MS Gothic 兜底。 */
+  font-family: Consolas, "Cascadia Mono", "Sarasa Mono SC", "Noto Sans Mono CJK SC", "MS Gothic", "Courier New", monospace;
   letter-spacing: 0.03em;
   min-height: 100vh;
   min-height: 100dvh;   /* 手机地址栏收放时不再跳高 */
@@ -229,10 +231,10 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .m-golden { background: #ffd94a; box-shadow: 0 0 5px #ffd94a; }
 .m-token { background: #c9a86a; box-shadow: 0 0 5px #c9a86a; }
 .m-ticket { background: #8ee08a; box-shadow: 0 0 5px #8ee08a; }
-.m-repetition { background: #7fd8ff; box-shadow: 0 0 5px #7fd8ff; }
+.m-repetition { background: #ffb347; box-shadow: 0 0 5px #ffb347; }
 .m-battery { background: #ffe066; box-shadow: 0 0 5px #ffe066; }
-.m-chain { background: #d8a8ff; box-shadow: 0 0 5px #d8a8ff; }
-.m-wild { background: #c8f0ff; box-shadow: 0 0 5px #c8f0ff; }
+.m-chain { background: #e0a060; box-shadow: 0 0 5px #e0a060; }
+.m-wild { background: #e6d9bc; box-shadow: 0 0 5px #e6d9bc; }
 
 .spin-info { min-height: 64px; margin: 8px 0; font-size: 13px; line-height: 1.6; }
 .payout {
@@ -312,6 +314,11 @@ body.evil { animation: evilflash 0.9s ease-out; }
   border-bottom: 1px dashed #262019;
 }
 .sym-ico { font-size: 16px; text-align: center; }
+/* 盘面/符号板图标：双色 SVG（代替跨平台渲染不一致的彩色 emoji）。
+   统一用 1em 跟字号缩放，任何设备上大小一致。 */
+.sym-svg { width: 1em; height: 1em; display: block; margin: 0 auto; }
+.slot-cell .sym-svg { width: 1.15em; height: 1.15em; filter: drop-shadow(0 1px 1px rgba(0,0,0,.55)); }
+.slot-cell.rolling .sym-svg { filter: blur(0.9px) drop-shadow(0 1px 1px rgba(0,0,0,.55)); }
 .sym-name { color: var(--text); }
 .sym-val { color: var(--gold); text-align: right; }
 .sym-prob { color: var(--dim); text-align: right; }
@@ -362,7 +369,11 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .cc-price { color: var(--green); margin-top: 5px; font-size: 12px; }
 .cc-desc {
   font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.5;
-  max-height: 50px; overflow: hidden; text-align: left;
+  text-align: left;
+  /* 用 line-clamp 代替硬切：旧版 max-height + overflow:hidden 会把文字拦腰截断，
+     看起来像渲染 bug；line-clamp 至少给一个省略号。 */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  line-clamp: 3; overflow: hidden;
 }
 .store-card { width: 152px; }
 .drawer-slot {
@@ -472,6 +483,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
   /* HUD 为了两行紧凑排布不强制最小高度（否则顶栏会被撑高） */
   #hud > .btn-mini { min-height: 0; }
   .phone-opt { padding: 12px; }
+  /* 9px 的品质 chip 在手机上基本看不清 */
+  .rarity-chip { font-size: 11px; padding: 4px 6px; }
   /* 触屏没有“悬停”：点按后不要一直保持抬起状态 */
   .mem-card:hover, .charm-card:hover { transform: none; }
 }
@@ -522,7 +535,21 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .slot-grid { gap: 4px; padding: 6px; }
   .slot-cell { font-size: 24px; }
   .spin-info { min-height: 54px; font-size: 12px; }
-  .machine-controls { gap: 8px; }
+  .machine-controls {
+    gap: 8px;
+    /* 手机上单列后，看商店/抽屉要往下滚，拉杆会滑出视野。
+       修法：用 flex order 把「回合控制」排到拉杆上面，再把拉杆钉在视口底部。
+       这样 sticky 只会盖到已在其上方的元素，不会再挡住开回合的按钮。 */
+    position: sticky; bottom: 0; z-index: 6;
+    padding: 6px 0 4px;
+    background: linear-gradient(180deg, rgba(20, 17, 12, 0), var(--panel) 38%);
+  }
+  .machine-panel { display: flex; flex-direction: column; }
+  .machine-panel .machine-head { order: 1; }
+  .machine-panel #slot-grid { order: 2; }
+  .machine-panel .spin-info { order: 3; }
+  .machine-panel #round-controls { order: 4; }
+  .machine-panel .machine-controls { order: 5; }
   .machine-controls .btn { padding: 14px 10px; }
   .machine-controls #btn-spin { letter-spacing: 0.2em; }
 
@@ -538,8 +565,10 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .charm-card, .store-card { width: calc(50% - 3px); }
   .drawer-slot { width: calc(50% - 3px); }
   .cc-trait { font-size: 11px; }
+  /* 9px 的触发类型/标记在手机上基本看不清 */
+  .cc-type { font-size: 10.5px; padding: 2px 5px; }
   .cc-flags { font-size: 10px; }
-  .cc-desc { font-size: 11px; max-height: 60px; }
+  .cc-desc { font-size: 11px; -webkit-line-clamp: 4; line-clamp: 4; }
   .chg-n { font-size: 10px; }
 
   /* 弹窗：占满宽度，按钮等分 */
@@ -644,7 +673,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .codex-item.r-Legendary { border-color: var(--gold); box-shadow: 0 0 9px rgba(232, 185, 60, 0.2); }
 .codex-item.r-Rare { border-color: #9c5722; }
 .codex-item.r-Uncommon { border-color: #5c7a1a; }
-.codex-item.r-Epic { border-color: #b04ad0; }
+.codex-item.r-Epic { border-color: #b06a20; }
 .codex-item.locked { opacity: 0.55; border-style: dashed; }
 .codex-item.locked .cx-name { color: var(--dim); letter-spacing: 0.3em; }
 .cx-name { color: var(--amber); font-size: 13px; }
@@ -661,9 +690,29 @@ body.evil { animation: evilflash 0.9s ease-out; }
   border-bottom: 1px dashed var(--line); padding-bottom: 4px;
 }
 .guide-card .g-tip { border-left: 2px solid var(--amber-dark); padding-left: 10px; }
+/* 指南分节折叠（2000+ 字在手机上要滚很久）：默认只展开第一节 */
+.g-sec { border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; background: #171410; }
+.g-sec > summary {
+  cursor: pointer; list-style: none; padding: 9px 11px; font-size: 13px;
+  color: var(--amber-dim); letter-spacing: 0.14em;
+}
+.g-sec > summary::-webkit-details-marker { display: none; }
+.g-sec > summary::after { content: " ▾"; color: var(--dim); }
+.g-sec[open] > summary::after { content: " ▴"; }
+.g-sec[open] > summary { border-bottom: 1px dashed var(--line); color: var(--amber); }
+.g-sec .g-body { padding: 2px 11px 10px; }
+.g-sec .g-body p { font-size: 12px; line-height: 1.7; }
 
 @media (max-width: 760px) {
-  .fx-zone-label { display: none; }
+  /* 手机上别把两极构图的文字锚点直接删掉——改成横排小标签，
+     保住「左边是钱、右边是死」的空间对立（否则只剩两片模糊渐变）。 */
+  .fx-zone-label {
+    writing-mode: horizontal-tb; top: auto; bottom: 12px;
+    font-size: 10px; letter-spacing: 0.06em; opacity: 0.8;
+    max-width: 46vw; white-space: normal; line-height: 1.4;
+  }
+  .fx-rich .fx-zone-label { left: 8px; }
+  .fx-doom .fx-zone-label { right: 8px; text-align: right; }
   .fx-track { font-size: 11px; }
   .codex-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 52vh; max-height: 52dvh; }
   .codex-item { padding: 7px 8px; }
@@ -673,6 +722,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
  * v3：触屏说明气泡（替代只有悬停生效的 title）/ 阶段横幅
  * ========================================================================= */
 .fx-tip {
+  /* 高于弹窗(92)：按钮也走气泡了，弹窗内的按钮（如「等会儿再说」）同样需要看到说明。
+     pointer-events: none 保证它永远不会挡佳何点击；showModal 时主动收起旧气泡。 */
   position: fixed; z-index: 97; pointer-events: none; opacity: 0;
   padding: 7px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.6;
   background: rgba(18, 15, 11, 0.97); border: 1px solid var(--amber-dark);
@@ -734,7 +785,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .rarity-chip.r-Common { border-color: #6b6457; color: #b8b0a0; background: #211d16; }
 .rarity-chip.r-Uncommon { border-color: #5c7a1a; color: #b8d96a; background: #1a2010; }
 .rarity-chip.r-Rare { border-color: #9c5722; color: #e0a060; background: #221509; }
-.rarity-chip.r-Epic { border-color: #b04ad0; color: #e0a8ff; background: #20122a; }
+.rarity-chip.r-Epic { border-color: #b06a20; color: #f0b060; background: #241708; }
 .rarity-chip.r-Legendary {
   border-color: var(--gold); color: var(--gold); background: #2a2010;
   box-shadow: 0 0 8px rgba(232,185,60,.35);
@@ -752,8 +803,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .tt-passive { color: #9dbf2e; border-color: #5c7a1a; }
 .tt-random { color: var(--amber); border-color: var(--amber-dark); }
 .tt-button { color: #ff8a70; border-color: #7a2a1a; }
-.tt-instant { color: #7fd8ff; border-color: #2a5a70; }
-.tt-cadaver { color: #c88aff; border-color: #5a3a7a; }
+.tt-instant { color: var(--gold); border-color: #7a5426; }
+.tt-cadaver { color: #d99a6a; border-color: #8a4a2a; }
 .codex-item .cc-type { margin-top: 4px; }
 
 /* —— 图鉴：触发方式与品质分布说明 —— */
@@ -768,7 +819,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .lg-item.tt-passive b { color: #9dbf2e; }
 .lg-item.tt-random b { color: var(--amber); }
 .lg-item.tt-button b { color: #ff8a70; }
-.lg-item.tt-instant b { color: #7fd8ff; }
+.lg-item.tt-instant b { color: var(--gold); }
 .lg-rars { margin-top: 7px; font-size: 11px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* —— 商店：已拥有 —— */
@@ -781,7 +832,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .cd-head .cd-title.r-Common { color: var(--text); }
 .cd-head .cd-title.r-Uncommon { color: #b8d96a; }
 .cd-head .cd-title.r-Rare { color: #e0a060; }
-.cd-head .cd-title.r-Epic { color: #e0a8ff; }
+.cd-head .cd-title.r-Epic { color: #f0b060; }
 .cd-head .cd-title.r-Legendary { color: var(--gold); }
 
 /* —— 通话记录 —— */
@@ -813,8 +864,10 @@ body.evil { animation: evilflash 0.9s ease-out; }
 @media (prefers-reduced-motion: reduce) {
   .fx-coin, .fx-doom-bit { display: none; }
   .slot-cell.rolling .cs, .slot-cell.settled { animation: none; }
-  /* 这四条以前漏掉了：强制减少动效时仍在无限闪烁 */
-  .logo-text, .slot-cell.six, .jackpot-text, .countdown { animation: none; }
+  /* 补全遗漏：中奖格子弹跳 / 容量满抖动 / 提示气泡过渡 / 浮空与横幅 */
+  .slot-cell.hit, .store-deny { animation: none; }
+  .fx-tip { transition: none; }
+  .fx-float, .fx-banner, .fx-combo, .fx-miss, .fx-coin-fly { display: none; }
   body.evil { animation: none; }
 }
 
