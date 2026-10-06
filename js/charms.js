@@ -1,7 +1,7 @@
 "use strict";
 /* =========================================================================
  * 仿《四叶草深渊》(CloverPit) —— 幸运符库与效果分发器
- * 文案与数值来源：cloverpit.wiki.gg「Lucky Charms」全表（160件精选还原90+件）
+ * 文案与数值来源：cloverpit.wiki.gg「Lucky Charms」全表（还原 109 件）
  * trigger：passive 常驻 / random 随机触发 / button 红按钮充能 / instant 即生效
  * 钩子：derived / luck / modChance / spinEnd / retrigger / button / roundEnd
  *       deadlineStart / deadlineEnd / purchase / discard / phonePick / prevent666 / restock
@@ -34,12 +34,10 @@
     for (const e of ws) { x -= e[1]; if (x <= 0) return e[0]; }
     return ws[ws.length - 1][0];
   }
-  function resellValue(st, c) {
-    const d = CH[c.id];
-    let v = d ? Math.ceil(d.cost / 2) : 0;
-    if (c.trait) v += Math.ceil(CP.TRAITS[c.trait].cost / 2);
-    return v;
-  }
+  /* 转卖价值统一走引擎那一份口径（CP.Engine.charmResell），
+   * 不再在这里单独写一遍 ceil —— 旧版两处 ceil 位置不同，详情页显示的价钱
+   * 和实际到手的券会对不上。 */
+  function resellValue(st, c) { return CP.Engine.charmResell(c); }
   /* 符文触发计数（塔罗牌/预言师/黑桃A 依赖） */
   function triggered(st, n) {
     n = n || 1;
@@ -255,7 +253,10 @@
       },
     },
   });
-  def("evil_deal", "邪恶交易", "Rare", 50, "666概率×2；符号倍率、图案倍率、利息与回合券全部×2；每期开始 +2券。", {
+  // 定价 50 券在「多旋转 1 券 / 跳过回合 4 券」的常规券流下几乎攒不满，
+  // 等于是一件「永远买不到」的符文；降到 24 后中期可以有意攒一次，
+  // 仍是全场最贵的深渊级选项（次贵是扩音器 7 券）。
+  def("evil_deal", "邪恶交易", "Rare", 24, "666概率×2；符号倍率、图案倍率、利息与回合券全部×2；每期开始 +2券。", {
     unlock: (m) => (m.stats.sixes || 0) >= 10,
     hooks: {
       derived(c, st, d) { d.p666Mult *= 2; d.symMult *= 2; d.patMult *= 2; d.interestMult *= 2; },
@@ -289,14 +290,17 @@
   });
 
   /* ============ 红按钮充能系 ============ */
-  def("golden_horseshoe", "金色马蹄铁", "Legendary", 4, "【充能3】下一次旋转中，所有「随机触发」符文尽可能各触发一次。每回合使用5次以上有10%概率弃置。", {
+  def("golden_horseshoe", "金色马蹄铁", "Legendary", 4, "【充能3】下一次旋转中，所有「随机触发」符文尽可能各触发一次。每回合用尽 3 格能量后有 10% 概率弃置。", {
     unlock: (m) => (m.stats.purchases || 0) >= 30, button: true, charges: 3, trigger: "button",
     hooks: {
       button(c, st, ctx) {
         st.flags.ghList = st.charms.filter((x) => CH[x.id] && CH[x.id].trigger === "random").map((x) => x.id);
         st.flags.ghUsesThisRound = (st.flags.ghUsesThisRound || 0) + 1;
         triggered(st);
-        if (st.flags.ghUsesThisRound >= 5 && chance(st, 0.10)) CP.Engine.discardCharm(st, c.uid, false);
+        // 「每回合使用 5 次以上」是写坏的旧文案：充能只有 3、每回合结算才 +1，
+        // 一个回合内根本用不到 5 次，这条弃置判定永远不可能触发。
+        // 现在按「本回合把 3 格能量全部用尽」结算，与卡片文案一致。
+        if (st.flags.ghUsesThisRound >= c.maxCharges && chance(st, 0.10)) CP.Engine.discardCharm(st, c.uid, false);
         ctx.events.push({ type: "gh", text: "金色马蹄铁：随机符文蓄势待发" });
       },
     },
@@ -370,7 +374,10 @@
     hooks: {
       button(c, st, ctx) {
         const f = 2 + st.rng() * 4;
-        st.interestBonus += 0.10;
+        // 卡片写的是「利息 +10%（**至期末**）」，所以加成记在独立的 st.limboInterest 上，
+        // 由 startDeadline 每份清零。旧实现加在 st.interestBonus（只在 newRun 初始化）上，
+        // 实际是永久的：跨过期末后进第 2 期利率仍从 7% 停在 17%。
+        st.limboInterest = (st.limboInterest || 0) + 0.10;
         st.flags.debtMultPermanent = (st.flags.debtMultPermanent || 1) * f;
         st.debt = Math.ceil(st.debt * f);
         triggered(st);
@@ -597,7 +604,12 @@
         const best = mostValued(st);
         if (r.symbol === best || r.symSum <= 0) return;
         for (const i of r.cells) st.board[i] = best;
-        const perNew = Math.floor(r.per / r.symSum * st.symValues[best] * r.cells.length);
+        // 补差额按「换过去那个符号自己的赔付口径」重算，含符号补偿系数
+        // （CP.SYM_RTP_COMP）—— 旧写法直接沿用原符号的比例，把 7 的补偿带进了
+        // 非 7 符号，或反过来漏掉 7 的补偿。
+        const compOld = (CP.SYM_RTP_COMP && CP.SYM_RTP_COMP[r.symbol]) || 1;
+        const compNew = (CP.SYM_RTP_COMP && CP.SYM_RTP_COMP[best]) || 1;
+        const perNew = Math.floor(r.per / r.symSum * st.symValues[best] * r.cells.length / compOld * compNew);
         const gain = Math.max(0, perNew * r.triggers - r.payout);
         if (gain > 0) {
           ctx.gainCoins = (ctx.gainCoins || 0) + gain;
@@ -644,9 +656,12 @@
     instant(st, c) {
       const slots = st.cardId === "desperate" ? 3 : CP.STORE_SLOTS;
       st.store = [];
+      const onShelf = new Set();
       for (let i = 0; i < slots; i++) {
-        const id = CP.CharmFx.randomCharmId(st, { luckOnly: i < 2 });
-        st.store.push({ id, trait: null, free: false });
+        const id = CP.CharmFx.randomCharmId(st, { luckOnly: i < 2, exclude: onShelf });
+        if (!id) break;
+        onShelf.add(id);
+        st.store.push({ id, trait: null, free: false, sold: false });
       }
       st.storeDiscountTemp = 0;
     },
@@ -833,7 +848,7 @@
           const b = st.flags.voragoBanned;
           st.flags.bannedCharmId = null;
           st.flags.voragoBanned = null;
-          if (b && CH[b]) st.charms.push(CP.CharmFx.makeInstance(st, b, true));
+          if (b && CH[b]) CP.Engine.equipCharm(st, CP.CharmFx.makeInstance(st, b), "深渊巨口吐出的符文");
         } else {
           st.flags.bannedCharmId = ctx.charm.id;
           st.flags.voragoBanned = ctx.charm.id;
@@ -853,7 +868,7 @@
           const b = st.flags.barathrumBanned;
           st.flags.bannedCallId = null;
           st.flags.barathrumBanned = null;
-          if (b && CP.PHONE_CALL_BY_ID[b]) CP.Engine.applyPhoneCall(st, CP.PHONE_CALL_BY_ID[b], true);
+          if (b && CP.PHONE_CALL_BY_ID[b]) CP.Engine.applyPhoneCall(st, CP.PHONE_CALL_BY_ID[b]);
         }
       },
     },
@@ -867,13 +882,15 @@
   /* ============ 连锁系（免费旋转 / 连锁奖励） ============
    * 数值口径：data.js「免费旋转 / 连锁奖励的期望值口径」+ par sheet §3 P1-1
    *   单次触发的期望总次数 E = n / (1 − B)，B = 再触发分支因子
-   * 所有赠送一律走 E.grantFreeSpins（含每回合硬上限），符文自己不碰 spinsLeft。 */
+   * 所有赠送一律走 E.grantFreeSpins：卡片文案里的「每回合上限 N」是**真实闸门**
+   * （数值见 CP.CHAIN_SPIN_CAPS），外层还有一层每回合赠送总量硬上限。
+   * 符文自己不碰 spinsLeft。 */
   def("chain_reaction", "连锁反应", "Rare", 3, "每次旋转计分含 3+ 图案时，赠送 1 次旋转（每回合上限 6 次）。", {
     base: true,
     hooks: {
       spinEnd(c, st, ctx) {
         if (ctx.free || ctx.scored.length < 3) return;
-        if (CP.Engine.grantFreeSpins(st, 1, "连锁反应")) triggered(st);
+        if (CP.Engine.grantFreeSpins(st, 1, "连锁反应", CP.CHAIN_SPIN_CAPS.chain_reaction)) triggered(st);
       },
     },
   });
@@ -882,7 +899,7 @@
     hooks: {
       spinEnd(c, st, ctx) {
         if (!ctx.scored.some((r) => r.id === "JACKPOT")) return;
-        if (CP.Engine.grantFreeSpins(st, 6, "满贯回响")) triggered(st);
+        if (CP.Engine.grantFreeSpins(st, 6, "满贯回响", CP.CHAIN_SPIN_CAPS.jackpot_echo)) triggered(st);
       },
     },
   });
@@ -891,7 +908,7 @@
     hooks: {
       spinEnd(c, st, ctx) {
         if (ctx.roundSpinNum % 5 !== 0) return;
-        if (CP.Engine.grantFreeSpins(st, 1, "连锁信")) triggered(st);
+        if (CP.Engine.grantFreeSpins(st, 1, "连锁信", CP.CHAIN_SPIN_CAPS.chain_letter)) triggered(st);
       },
     },
   });
@@ -900,7 +917,7 @@
     hooks: {
       spinEnd(c, st, ctx) {
         if (ctx.free || ctx.scored.length < 5) return;
-        if (CP.Engine.grantFreeSpins(st, 2, "深渊回响")) triggered(st);
+        if (CP.Engine.grantFreeSpins(st, 2, "深渊回响", CP.CHAIN_SPIN_CAPS.deep_echo)) triggered(st);
       },
     },
   });
@@ -941,8 +958,9 @@
 
   CP.CHARMS = CH;
   CP.CharmFx = {
-    /* 生成符文实例（instant 类立即生效） */
-    makeInstance(st, id, free, trait) {
+    /* 生成符文实例（instant 类立即生效）。
+     * 旧的第三个参数 free 全项目没有任何地方读取过，已去掉；特性走第三个参数。 */
+    makeInstance(st, id, trait) {
       const d = CH[id] || CH.lucky_cat;
       const inst = {
         uid: st.uidSeq++,
@@ -965,11 +983,13 @@
       return inst;
     },
 
-    /* 商店随机符文（稀有度权重 + 封禁过滤） */
+    /* 商店随机符文（稀有度权重 + 封禁过滤 + 本张货架去重） */
     randomCharmId(st, opts) {
       opts = opts || {};
       const unlocked = (st.meta && st.meta.unlocked) || Object.keys(CH).filter((k) => CH[k].base);
       const banned = new Set((st.flags.banned || []).concat(st.flags.bannedCharmId ? [st.flags.bannedCharmId] : []));
+      // opts.exclude：本次货架已经出过的 id 集合，同一架不允许出现同名两件
+      const exclude = opts.exclude || null;
       // 已拥有（装备中 / 抽屉里）的唯一符文不再出货，商店不再被买不起的重复品占满
       const owned = new Set();
       for (const c of st.charms || []) owned.add(c.id);
@@ -980,6 +1000,7 @@
         // 骷髅是唯一可入池的残骸；已经拥有骷髅后就不该再出货（否则买了个寂寞）
         if (d.cadaver && (id !== "skull" || (st.cadaver && st.cadaver.skull))) continue;
         if (banned.has(id)) continue;
+        if (exclude && exclude.has(id)) continue;
         if (!d.stackable && owned.has(id)) continue;
         if (id === "cardboard_house" && st.flags.cardboardUsed) continue;
         if (opts.basicOnly && !d.base) continue;
@@ -991,9 +1012,13 @@
       if (!pool.length) {
         // 唯一符文都拿齐了：退回允许叠加的消耗品池，别让商店永远卡在"幸运猫"
         const spare = Object.keys(CH).filter((id) =>
-          CH[id].stackable && !banned.has(id) && (opts.basicOnly ? CH[id].base : unlocked.indexOf(id) >= 0));
+          CH[id].stackable && !banned.has(id) && !(exclude && exclude.has(id)) &&
+          (opts.basicOnly ? CH[id].base : unlocked.indexOf(id) >= 0));
+        // 连消耗品都在架上了就返回 null：宁可少摆一格，也不摆出第二件同名符文
         if (spare.length) return pickR(st, spare);
-        return "lucky_cat";
+        // 铺货架时（传了 exclude）宁可少摆一格，也不摆出第二件同名符文；
+        // 其他调用方（骷髅/D20 生成）仍要拿到一件可用符文。
+        return exclude ? null : "lucky_cat";
       }
       let tot = 0;
       for (const e of pool) tot += e[1];

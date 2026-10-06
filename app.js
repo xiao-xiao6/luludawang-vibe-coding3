@@ -23,15 +23,18 @@
     seven: '<path d="M5.6 5.6h12.8l-7.4 13.8" fill="none" stroke="M" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>',
     six: '<circle cx="12" cy="12" r="8.4" fill="none" stroke="S" stroke-width="1.5"/><path d="M15.6 6.4c-4.2 2.6-5.6 6.6-4.6 11.4" fill="none" stroke="M" stroke-width="2.6" stroke-linecap="round"/>',
   };
-  function symIcon(id) {
+  function iconSvg(id, cls) {
     if (!id) return "";
     const path = ICON_PATHS[id];
     if (!path) return "";
     const c = (CP.SYM_COLORS && CP.SYM_COLORS[id]) || { main: "#ffb347", shade: "#7a5426" };
     const svgBody = path.replace(/"M"/g, '"' + c.main + '"').replace(/"S"/g, '"' + c.shade + '"');
-    return '<svg class="sym-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    return '<svg class="' + (cls || "sym-svg") + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
       svgBody + "</svg>";
   }
+  /* 盘面符号与标题 logo 共用同一份图标源：标题页那枚四叶草必须是双色 SVG，
+   * 否则它就成了整个首屏里唯一的彩色 emoji 贴纸，和下面一整套符号不是一套东西。 */
+  function symIcon(id) { return iconSvg(id, "sym-svg"); }
   const RARITY_ZH = { Common: "普通", Uncommon: "罕见", Rare: "稀有", Epic: "史诗", Legendary: "传说" };
   const SCREENS = ["screen-title", "screen-cards", "screen-game", "screen-end", "screen-guide"];
   const SAVE_KEY = "cloverpit_run_v1"; // 局内存档（刷新/关页后续玩）
@@ -159,12 +162,16 @@
       let m = null;
       try { m = JSON.parse(localStorage.getItem("cloverpit_meta_v1") || "null"); } catch (e) { /* 忽略 */ }
       if (!m || !m.unlocked || !m.unlocked.length) {
-        m = { unlocked: CP.CharmFx.baseIds(), cards: ["erased"], drawersUnlocked: 0, stats: {}, deaths: 0 };
+        // 死亡次数只有 stats.deaths 一份（引擎注释里也要求只保留一份），
+        // 顶层 deaths 是早期遗留的第二份账，写它只会和 UI 读的那份漂移。
+        m = { unlocked: CP.CharmFx.baseIds(), cards: ["erased"], drawersUnlocked: 0, stats: {} };
       }
       m.unlocked = [...new Set(m.unlocked)].filter((id) => CP.CHARMS[id]);
       if (!m.cards || !m.cards.includes("erased")) m.cards = ["erased"].concat(m.cards || []);
       m.cards = [...new Set(m.cards)].filter((id) => CP.MEMORY_CARD_BY_ID[id]);
       if (!m.stats) m.stats = {};
+      if (typeof m.stats.deaths !== "number") m.stats.deaths = typeof m.deaths === "number" ? m.deaths : 0;
+      delete m.deaths; // 旧存档里的第二份死亡计数合并进 stats.deaths 后丢掉
       if (typeof m.drawersUnlocked !== "number") m.drawersUnlocked = 0;
       m.corpseCarry = m.corpseCarry || null;
       if (!m.seen) m.seen = [];
@@ -189,9 +196,14 @@
 
     saveRun() {
       try {
-        if (!this.st || this.st.ending) { localStorage.removeItem(SAVE_KEY); return; }
+        // 「这一页还没有对局状态」≠「玩家没有存档」。
+        // 旧实现把 !this.st 和「本局已结束」并列为删档条件，而 saveRun 同时挂在
+        // pagehide 与 visibilitychange 上 —— 停在标题页切个后台，别人那一局的存档就没了。
+        // 删档已由 endRun() / abandonRun() 里显式的 clearRun() 负责，这里不再兜底。
+        if (!this.st) return;
+        if (this.st.ending) { localStorage.removeItem(SAVE_KEY); return; }
         const data = E.serialize(this.st);
-        if (!data) { localStorage.removeItem(SAVE_KEY); return; }
+        if (!data) return;
         localStorage.setItem(SAVE_KEY, JSON.stringify(data));
       } catch (e) { /* 存不下就算了，不影响游戏 */ }
     },
@@ -300,7 +312,7 @@
       $("btn-spin").onclick = () => this.doSpin();
       $("btn-red").onclick = () => this.doRedButton();
       $("btn-restock").onclick = () => this.doRestock();
-      $("btn-end-deadline").onclick = () => this.endDeadline();
+      $("btn-end-deadline").onclick = () => this.endDeadline(true);
       $("btn-menu").onclick = () => {
         if (confirm("放弃本局并返回标题？（将计为一次死亡）")) this.abandonRun();
       };
@@ -361,6 +373,13 @@
           ev.preventDefault();
           this.doSpin();
         }
+        // R 键 = 红色按钮。「先拉杆、再按红按钮」是本作的核心节奏，
+        // 键盘 / 手柄玩家应该能连按，而不是只有鼠标够得着那颗小按钮（空格早已做了）。
+        if (ev.code === "KeyR" && !ev.ctrlKey && !ev.metaKey && !ev.altKey &&
+            this.st && this.st.phase === "spinning" && !this.spinning && !this.topModal()) {
+          ev.preventDefault();
+          this.doRedButton();
+        }
       });
     },
 
@@ -370,6 +389,10 @@
       const m = $(id);
       if (!m) return;
       this.hideTip(); // 旧气泡不能飘在新弹窗上面
+      // 提示浮条同样让位：弹窗打开时它不该盖在弹窗内容上
+      if (this._toastT) { clearTimeout(this._toastT); this._toastT = null; }
+      const ft = $("feed-toast");
+      if (ft) ft.classList.remove("on");
       this.lastFocus = document.activeElement && document.activeElement !== document.body
         ? document.activeElement : this.lastFocus;
       m.classList.remove("hidden");
@@ -413,12 +436,17 @@
     renderTitle() {
       const m = this.meta;
       const total = Object.keys(CP.CHARMS).length;
+      // logo 换成与盘面同一套的双色 SVG（图标源见 ICON_PATHS.clover），不再是彩色 emoji
+      const logo = $("logo-clover");
+      if (logo) logo.innerHTML = iconSvg("clover", "logo-clover-svg");
+      // 收藏进度合成一条口径：旧版并列显示「已解锁符文 33/109」和「图鉴已收录 0/109」，
+      // 玩家只会问「我到底解锁了没」。现在按「遇到过 / 能买到」两个明确的问题各答一行。
       $("title-meta").innerHTML = [
         "💀 死亡 " + (m.stats.deaths || 0) + " 次",
-        "🍀 已解锁符文 " + m.unlocked.length + " / " + total,
+        "🍀 幸运符：本局之外已遇到过 " + (m.seen ? m.seen.length : 0) + " / " + total + " 件",
+        "🛒 其中已解锁、能在商店买到：" + m.unlocked.length + " 件",
         "🃏 记忆卡 " + m.cards.length + " / " + CP.MEMORY_CARDS.length,
         "🗄 抽屉 " + m.drawersUnlocked + " / 4",
-        "📖 图鉴已收录 " + (m.seen ? m.seen.length : 0) + " / " + total,
         m.goldenLever ? "🏆 金色拉杆 · 已到手" : null,
       ].filter(Boolean).join("<br>");
     },
@@ -480,9 +508,12 @@
       if (!this.tabHidden("patterns")) this.renderPatterns();
       if (!this.tabHidden("log")) this.renderLog();
       this.renderKeyControls();
+      this.renderDock();
       $("btn-spin").disabled = !(st.phase === "spinning" && !this.spinning && st.spinsLeft > 0);
       $("btn-red").disabled = !(st.phase === "spinning" && !this.spinning);
-      $("btn-end-deadline").disabled = st.phase !== "roundSetup" || !!st.deathCountdown || this.spinning || (st.round === 0 && st.deadline > 1);
+      // 防误触：本期一回合都还没打就不给结算。旧条件带 `&& st.deadline > 1`，
+      // 唯独放过了第 1 期 —— 新玩家最容易手滑的那一期，点「结束本期」直接进死亡倒计时。
+      $("btn-end-deadline").disabled = st.phase !== "roundSetup" || !!st.deathCountdown || this.spinning || st.round === 0;
       document.querySelectorAll(".dep").forEach((b) => { b.disabled = this.spinning; });
       $("btn-restock").disabled = this.spinning;
       this.scheduleSave();
@@ -506,7 +537,17 @@
       // 幸运值保留上一转的数字：回合切换后变回「—」会让玩家失去参照
       const luck = this.lastSpin ? this.lastSpin.luck.total : null;
       $("hud-luck").textContent = luck == null ? "—" : "+" + luck;
-      $("machine-luck").textContent = st.flags.redNext ? "⚠ 6 的气息……" : "";
+      // #machine-luck 的位置在机器标题右边，就该说这台机器的事：本转幸运值的**构成**。
+      // 旧版把它当成红色来电预告的告示牌，玩家看到「6 的气息」只会以为机器被诅咒了。
+      const lk = this.lastSpin && this.lastSpin.luck;
+      $("machine-luck").textContent = lk
+        ? "本转幸运 符文 +" + lk.base + " · 机器 +" + lk.machine
+        : "幸运待测";
+      const omen = $("red-omen");
+      if (omen) {
+        omen.classList.toggle("hidden", !st.flags.redNext);
+        omen.textContent = st.flags.redNext ? "☎ 下一期：6 的气息会顺着电话线爬进来（红色来电）" : "";
+      }
     },
 
     shapeOf(id) {
@@ -617,13 +658,52 @@
       } else pb.classList.add("hidden");
     },
 
+    /* 拉杆坞（dock）：手机上每回合都要看的数字压成一条横幅贴在拉杆正上方。
+     * 旧版是「桌面三栏直接纵向堆叠」，390×844 实测整条主循环要跨 2.4 屏滚动：
+     * 拉杆 → 滚下去存款 → 滚下去买符文 → 再滚回来。能量总量同样挪到拉杆旁边，
+     * 配合 R 键「先拉杆、再按红按钮」可以连按。 */
+    renderDock() {
+      const st = this.st;
+      const d = E.derived(st);
+      const strip = $("atm-strip");
+      if (strip) {
+        const left = Math.max(0, st.debt - st.deposited);
+        strip.innerHTML =
+          '<span class="as-cell">债务 <b class="gold">' + CP.fmt(st.debt) + "</b></span>" +
+          '<span class="as-cell">已存 <b>' + CP.fmt(st.deposited) + "</b></span>" +
+          '<span class="as-cell">还差 <b class="amber">' + CP.fmt(left) + "</b></span>" +
+          '<span class="as-cell">利息 <b>' + (d.interest * 100).toFixed(0) + "%</b></span>" +
+          '<span class="as-cell">666 <b>' + (st.deadline >= 3 || st.flags.heartbreakLast
+            ? (E.currentP666(st) * 100).toFixed(1) + "%" : "—") + "</b></span>";
+      }
+      const tally = $("round-tally");
+      if (tally) {
+        if (!st.round) {
+          tally.innerHTML = '<span class="dim">本期还没打过回合——先拉一次拉杆</span>';
+        } else {
+          const earned = st.roundEarnings || 0, spent = st.roundCost || 0;
+          const label = st.phase === "spinning" ? "本回合" : "上回合";
+          tally.innerHTML = label + "收益 <b class=\"" + (earned >= spent ? "green" : "gold") + "\">+" +
+            CP.fmt(earned) + "</b> · 支出 <b>" + CP.fmt(spent) + "</b> · 距还清 <b>" +
+            CP.fmt(Math.max(0, st.debt - st.deposited)) + "</b> · " +
+            (earned >= spent ? "跑赢了这一回合" : "这一回合倒挂");
+        }
+      }
+      const en = $("energy-strip");
+      if (en) {
+        const btns = st.charms.filter((c) => { const cd = CP.CHARMS[c.id]; return cd && cd.button; });
+        const cur = btns.reduce((a, c) => a + (c.charges || 0), 0);
+        const max = btns.reduce((a, c) => a + (c.maxCharges || 0), 0);
+        en.textContent = btns.length ? "⚡ 能量 " + cur + "/" + max + "（R 键发动）" : "";
+      }
+    },
+
     renderCharmRow() {
       const st = this.st;
       const d = E.derived(st);
-      const used = st.charms.filter((c) => {
-        const x = CP.CHARMS[c.id];
-        return !x || !x.noSpace;
-      }).length;
+      // 容量口径与商店购买 / 抽屉取出 / 电话入栏共用引擎那一份（E.charmSpaceUsed），
+      // 避免四处各写一遍算出「8 / 7」这种越界数字
+      const used = E.charmSpaceUsed(st);
       $("charm-count").textContent = used + " / " + d.charmSpace;
       const row = $("charm-row");
       const empty = !st.charms.length;
@@ -661,7 +741,13 @@
 
     syncSoundButton() {
       const b = $("btn-sound");
-      if (b) b.textContent = Sfx.muted ? "🔇 静音中" : "🔊 音效";
+      if (!b) return;
+      // HUD 图标统一成单色描边 SVG（彩色 emoji 和盘面那套双色符号不是一套东西）；
+      // 静音状态用 class 切换斜杠，文字只做辅助说明。
+      b.classList.toggle("is-muted", Sfx.muted);
+      b.setAttribute("aria-pressed", Sfx.muted ? "true" : "false");
+      const label = b.querySelector(".btn-label");
+      if (label) label.textContent = Sfx.muted ? "已静音" : "音效";
     },
 
     charmCardHTML(c) {
@@ -706,13 +792,17 @@
       const def = CP.CHARMS[entry.id] || {};
       const price = E.charmPrice(this.st, entry);
       const trait = entry.trait ? CP.TRAITS[entry.trait] : null;
-      const owned = !def.stackable && E.ownsCharm(this.st, entry.id);
-      return '<div class="charm-card store-card r-' + (def.rarity || "Common") + (owned ? " owned" : "") +
-        '" data-slot="' + i + '" tabindex="0" role="button" title="' + (def.desc || "").replace(/"/g, "'") + '">' +
+      // 已售出的格子保持原位并置灰（旧实现把格子抽掉让后面的商品前移，
+      // 补上来的可能是同一件符文 —— 买到手的是个不能点的死格）
+      const dead = !!entry.sold || (!def.stackable && E.ownsCharm(this.st, entry.id));
+      const deadText = entry.sold ? "已售出" : dead ? "已拥有 · 不可重复" : null;
+      return '<div class="charm-card store-card r-' + (def.rarity || "Common") + (dead ? " owned" : "") +
+        '" data-slot="' + i + '" tabindex="0" role="button"' +
+        (dead ? ' aria-disabled="true"' : "") + ' title="' + (def.desc || "").replace(/"/g, "'") + '">' +
         '<div class="cc-top"><div class="cc-name">' + (def.name || entry.id) + "</div>" + this.rarityChip(def.rarity) + "</div>" +
         this.triggerTag(def) +
         (trait ? '<div class="cc-trait" style="color:' + trait.color + '">' + trait.name + "</div>" : "") +
-        '<div class="cc-price">' + (owned ? "已拥有 · 不可重复" : entry.free ? "免费！" : price + " 券") + "</div>" +
+        '<div class="cc-price">' + (deadText || (entry.free ? "免费！" : price + " 券")) + "</div>" +
         '<div class="cc-desc">' + (def.desc || "") + "</div>" +
         "</div>";
     },
@@ -803,15 +893,49 @@
 
     feed(msg, kind) {
       if (!this.st) return;
-      E.addFeed(this.st, msg, kind);
+      const k = kind || "info";
+      E.addFeed(this.st, msg, k);
       if (!$("tab-log").classList.contains("hidden")) this.renderLog();
+      // 关键反馈不能只进「默认不是当前页」的日志：欠转、免费回合、666 原因、
+      // 容量已满……玩家看不见就等于没写。非纯信息类的条目同时浮一枚 toast。
+      if (k !== "info") this.showToast(msg, k);
+    },
+
+    /* 浮在盘面上方 2 秒的一次性提示（不进日志页也能看到） */
+    showToast(msg, kind) {
+      let el = $("feed-toast");
+      if (!el || !msg) return;
+      el.textContent = msg;
+      el.className = "feed-toast k-" + (kind || "info") + " on";
+      const grid = $("slot-grid");
+      if (grid) {
+        const r = grid.getBoundingClientRect();
+        el.style.left = Math.round(r.left + r.width / 2) + "px";
+        el.style.top = Math.max(48, Math.round(r.top - 6)) + "px";
+      }
+      if (this._toastT) clearTimeout(this._toastT);
+      this._toastT = setTimeout(() => {
+        el.classList.remove("on");
+        this._toastT = null;
+      }, 2000);
+    },
+
+    /* 引擎在内部直接 addFeed 的条目（欠转、免费回合、666 的原因）也得上屏一次 */
+    flushFeed(mark) {
+      const f = this.st && this.st.feed;
+      if (!f || f.length <= mark) return;
+      for (let i = mark; i < f.length; i++) {
+        if (f[i] && f[i].kind !== "info") { this.showToast(f[i].text, f[i].kind); break; }
+      }
     },
 
     /* ==================== 回合流程 ==================== */
     chooseMode(mode) {
       const st = this.st;
       if (st.phase !== "roundSetup") return;
+      const feedMark = st.feed.length;
       const r = E.startRound(st, mode);
+      this.flushFeed(feedMark);   // 「金币不足——欠转」「身无分文——免费回合」
       this.lastSpin = null;
       $("spin-info").innerHTML = '<div class="dim">第 ' + st.round + "/" + st.roundsPerDeadline +
         " 回合 · " + r.spins + " 次旋转" + (r.free ? "（免费）" : "") + "</div>";
@@ -837,7 +961,9 @@
       CP.Fx.lever();
       Sfx.lever();
 
+      const feedMark = st.feed.length;
       const res = E.spin(st);
+      this._feedMark = feedMark;   // 666 的「为什么」在引擎内部直接进日志，这里补一次浮屏
       const target = (res && res.board) || st.board;
       // 免费回合（身无分文）没有任何收益：跳过整段滚动演出，直接揭晓。
       // 玩家此刻已是最惨状态，需要的是「快速重启」，不是 17 秒纯动画换 1 张券。
@@ -846,6 +972,13 @@
           const cell = cells[i];
           if (cell) cell.classList.remove("hit", "lucky", "rolling", "settled");
         }
+        Sfx.tick(0.4);
+        this.finishSpin(res);
+        return;
+      }
+      // 「减少动态效果」必须真的少动：CSS 那套降级关不掉这段 2.44 秒的 rAF 换脸循环，
+      // 音效也照放。免费回合已经走的是直出路径，这里同口径处理。
+      if (!CP.Fx.on) {
         Sfx.tick(0.4);
         this.finishSpin(res);
         return;
@@ -922,6 +1055,7 @@
         this.renderBoard();
         this.renderSpinResult(res);
       }
+      this.flushFeed(this._feedMark);
       this.renderAll();
     },
 
@@ -954,7 +1088,10 @@
         CP.Fx.miss();
       }
       if (res.luck.total > 0) {
-        html += '<div class="luck-line">✨ 机器的火花……（幸运 +' + res.luck.total + "）</div>";
+        // 拆开报：把符文挣来的幸运也算成「机器的火花」，玩家就分不清这次高幸运
+        // 是机器的怜悯还是自己的符文 —— 而这恰好是符文价值感的一部分。
+        html += '<div class="luck-line">✨ 幸运 +' + res.luck.total +
+          "（符文 +" + res.luck.base + " · 机器 +" + res.luck.machine + "）</div>";
       }
       if (res.six) {
         Sfx.evil();
@@ -1027,9 +1164,17 @@
       }
     },
 
-    endDeadline() {
+    /* ask=true 只在玩家亲手点「结束本期」时确认；打完本期最后一回合的自动结算不该每回合弹窗 */
+    endDeadline(ask) {
       const st = this.st;
       if (!st || st.deathCountdown) return;
+      // 「结束本期」的真实后果是**开始死亡倒计时**（不可逆），而按钮文案听着完全无害，
+      // 位置又紧挨着「全部存入」。钱不够还清时先确认一次。
+      const short = st.debt - st.deposited - st.coins;
+      if (ask && short > 0) {
+        if (!confirm("还差 " + CP.fmt(short) + " 金币才能还清本期债务。\n\n" +
+          "确定结束本期吗？这会立即开始死亡倒计时（" + CP.DEATH_COUNTDOWN_ROUNDS + " 个回合内还清才能活命）。")) return;
+      }
       const r = E.tryEndDeadline(st);
       if (r.paid) this.showDeadlineSummary();
       else if (r.blocked) this.feed("本期还没打过任何回合——先拉一次拉杆再结算吧", "warn");
@@ -1084,6 +1229,17 @@
     buySlot(i) {
       const st = this.st;
       if (!st) return;
+      const entry = st.store[i];
+      // 已售出 / 已拥有的格子直接不响应（旧版卡片照常可点，点了才在日志里报错）
+      if (entry) {
+        const def = CP.CHARMS[entry.id] || {};
+        if (entry.sold) { this.denyCard(i, "store"); return; }
+        if (!def.stackable && E.ownsCharm(st, entry.id)) {
+          this.feed("已经拥有这件符文了——同一种符文同时只能持有一件", "warn");
+          this.denyCard(i, "store");
+          return;
+        }
+      }
       const r = E.buyCharm(st, i);
       if (r.ok) {
         this.feed("购买了 " + CP.CHARMS[r.charm.id].name + "（" + r.price + " 券）" + (r.instant ? " · 已即时生效" : ""), "good");
@@ -1105,12 +1261,14 @@
       // 容量满：除日志外，直接在卡片上抖一下 + 红描边，不让玩家切页去找原因
       if (r.reason === "space") {
         this.feed("符文容量已满！先转卖或收进抽屉吧", "warn");
-        this.denyCard(i);
+        this.denyCard(i, "store");
       }
     },
 
-    denyCard(i) {
-      const el = document.querySelector('.store-card[data-slot="' + i + '"]');
+    /* kind: "store" | "drawer" —— 商店与抽屉共用同一套「点了但放不下」的抖动 */
+    denyCard(i, kind) {
+      const sel = (kind === "drawer" ? ".drawer-slot[data-slot=\"" : '.store-card[data-slot="') + i + '"]';
+      const el = document.querySelector(sel);
       if (!el) return;
       el.classList.add("store-deny");
       setTimeout(() => el.classList.remove("store-deny"), 560);
@@ -1123,7 +1281,9 @@
       this.selCharmUid = uid;
       const def = CP.CHARMS[c.id] || {};
       const trait = c.trait ? CP.TRAITS[c.trait] : null;
-      const sellGain = Math.ceil(((def.cost || 0) + (trait ? trait.cost : 0)) / 2) * (c.id === "sardines" ? 2 : 1);
+      // 转卖价走引擎唯一口径（与真正发券的 discardCharm 同一份算法），
+      // 旧版详情页自己算一遍 ceil，和实际到手的券会对不上
+      const sellGain = E.charmResell(c);
       $("charm-detail").innerHTML =
         '<div class="cd-head">' + '<span class="cd-title r-' + (def.rarity || "Common") + '">' + (def.name || c.id) + "</span>" +
         this.rarityChip(def.rarity) + "</div>" +
@@ -1163,7 +1323,13 @@
         const c = st.charms[st.charms.length - 1];
         if (c) this.feed("取出了 " + CP.CHARMS[c.id].name);
         this.renderAll();
+        return;
       }
+      // 旧版这里在容量满时**完全静默**：玩家点抽屉卡片「没反应」，也不知道为什么。
+      // 关键反馈不该只躺在默认不显示的日志页里。
+      this.feed("符文容量已满——先转卖一件装备栏里的符文，再取出抽屉里的这一件", "warn");
+      Sfx.miss();
+      this.denyCard(slot, "drawer");
     },
 
     /* ==================== 电话 ==================== */
@@ -1182,7 +1348,9 @@
       $("phone-head").textContent = type === "red" ? "☎ 阴冷的电流声……" :
         type === "sacred" ? "☎ 温暖的铃音……" : "☎ 电话响了……";
       $("phone-head").className = "phone-head t-" + type;
-      $("phone-greet").textContent = "「" + greets[Math.floor(Math.random() * greets.length)] + "」";
+      // 开场白同样走对局的播种随机（st.rng），而不是 Math.random()：
+      // 项目的前提是「同一颗种子 → 同一条可复现的时间线」，风味文本也不该例外。
+      $("phone-greet").textContent = "「" + greets[Math.floor(st.rng() * greets.length)] + "」";
       const box = $("phone-options");
       box.innerHTML = "";
       st.phone.options.forEach((id, i) => {
@@ -1343,9 +1511,10 @@
             this.triggerTag(d) +
             '<div class="cx-desc">' + d.desc + "</div></div>";
         }
+        // 未遇到的条目不显示价格：那是在泄露尚未获得道具的信息（旧版直接写着「2 券」）
         return '<div class="codex-item locked">' +
           '<div class="cx-top"><div class="cx-name">？？？</div>' + this.rarityChip(rar) + "</div>" +
-          '<div class="cx-sub">' + d.cost + " 券</div>" +
+          '<div class="cx-sub">价格 · 未公开</div>' +
           '<div class="cx-desc">尚未遇到——在商店、电话或抽屉中遇见它才会解锁</div></div>';
       }).join("");
 
@@ -1392,11 +1561,14 @@
       this.clearRun();
       CP.CharmFx.mergeStats(this.meta, st);
       const newly = CP.CharmFx.updateUnlocks(this.meta);
+      // 三条结局各发一张记忆卡：指南写的是「靠记忆包交易**和结局**来收集」，
+      // 而旧实现里只有 acceptPack 会发卡，结局一张都不发。
+      const gotCard = E.awardEndingCard(st);
       this.saveMeta();
-      this.showEnd(ending, newly);
+      this.showEnd(ending, newly, gotCard);
     },
 
-    showEnd(ending, newly) {
+    showEnd(ending, newly, gotCard) {
       this.showScreen("screen-end");
       const st = this.st;
       const card = $("end-card");
@@ -1412,6 +1584,9 @@
       const unl = newly && newly.length
         ? '<div class="end-unlock">✨ 新解锁符文：' + newly.join("、") + "</div>"
         : "";
+      const got = gotCard
+        ? '<div class="end-card-get">🃏 你在结局里捡到了一张新的记忆卡：' + gotCard + "</div>"
+        : "";
       const btn = '<div class="end-actions">' +
         '<button id="btn-end-again" class="btn btn-amber">↻ 再来一局</button>' +
         '<button id="btn-end-back" class="btn">返回标题</button>' +
@@ -1420,19 +1595,19 @@
         card.innerHTML =
           '<div class="end-title evil">你 坠 入 了 深 渊</div>' +
           '<p class="end-text">地板打开的那一刻，announcer 闭上了眼睛。<br>抽屉里留下的一切，会成为下一位房客的……一部分。</p>' +
-          stats + unl + btn;
+          stats + unl + got + btn;
         Sfx.evil();
       } else if (ending === "bad") {
         card.innerHTML =
           '<div class="end-title bad">门 后 无 门</div>' +
           '<p class="end-text">你走下长长的走廊——牢房只是悬在深渊之上的无数混凝土柱之一。<br>电梯还在那里。可惜，控制面板被换成了一台崭新的老虎机。<br>你笑了笑，转身回到牢房。明天，又是新的一期。</p>' +
-          stats + unl + btn;
+          stats + unl + got + btn;
         Sfx.evil();
       } else {
         card.innerHTML =
           '<div class="end-title good">白 钥 匙 · 上 升</div>' +
           '<p class="end-text">控制面板还在它该在的位置。电梯载着你缓缓上升，<br>门开时，是一片宁静的日出。<br>墙上的巨大数字，悄悄加了 1。</p>' +
-          stats + unl + btn;
+          stats + unl + got + btn;
         Sfx.holy();
       }
       $("btn-end-again").onclick = () => { this.st = null; this.showCardSelect(); };
@@ -1464,18 +1639,18 @@
         "<h3>✨ 幸运值</h3>" +
         "<p>每次旋转随机产生 0~15 点幸运：把等量格子强制变成同一符号，<b>15 点 = 保底大满贯</b>。连续空转会触发机器的「怜悯」（橡皮筋加成），幸运值悄悄上涨。</p>" +
         "<h3>🟥 红色按钮（重要！）</h3>" +
-        "<p>很多幸运符带 <b>⚡充能</b>标记——它们平时不生效，只有点<b>红色按钮</b>才触发，每次消耗 1 格能量。能量在<b>每个回合结算时自动 +1</b>（部分符文例外）。正确节奏：<b>先拉杆进入旋转，再按红按钮</b>——红按钮只在旋转阶段可点，点按钮本身免费。</p>" +
+        "<p>很多幸运符带 <b>⚡充能</b>标记——它们平时不生效，只有点<b>红色按钮</b>才触发，每次消耗 1 格能量。能量在<b>每个回合结算时自动 +1</b>（部分符文例外）。正确节奏：<b>先拉杆进入旋转，再按红按钮</b>——红按钮只在旋转阶段可点，点按钮本身免费。键盘 / 手柄玩家可以直接按 <b>R 键</b>发动（和空格键=拉杆组成连按），拉杆旁的能量条会显示当前总能量。</p>" +
         "<h3>🏦 ATM、利息与幸运券</h3>" +
         "<p>金币分两种去处：<b>存入 ATM</b> 的钱按回合生息（基础 7%），是还债专用；<b>身上</b>的金币用于拉杆与补货。<b>尽早存钱吃利息！</b><b>幸运券</b>（绿色）是买幸运符的货币，回合结算、少旋转、提前结束本期都会给。</p>" +
         "<h3>☎ 电话</h3>" +
-        "<p>第 2 期起每期开始电话会响：3 个选项选 1 个，可花券重掷。普通来电都是增益。<b>红色来电</b>给超值收益但接听即永久放弃神圣资格；连续<b>挂断 3 次红色来电</b>会开启神圣之路——之后 666 化为 999（不再没收金币），还可能出现神圣来电与神圣符文。</p>" +
+        "<p>第 2 期起每期开始电话会响：3 个选项选 1 个，可花券重掷。普通来电都是增益。<b>红色来电</b>给超值收益但接听即永久放弃神圣资格；累计<b>挂断 3 次红色来电</b>会开启神圣之路——之后 666 化为 999（不再没收金币，但残骸仍会落下），神圣来电也会开始混进每期的电话池里（不是取代普通来电）。</p>" +
         "<h3>😈 666 / 999</h3>" +
-        "<p>第 3 期起每次旋转后可能降下 6/66/666。6 只是印在盘上占格；66 占两格；<b>666 会没收本回合所得</b>（第 7 期起=身上全部金币），并在抽屉留下一块尸块。被 6 印上的格子不再参与图案判定。</p>" +
+        "<p>第 3 期起每次旋转后可能降下 6/66/666。6 只是印在盘上占格；66 占两格；<b>666 会没收本回合所得</b>（第 7 期起=身上全部金币），并在抽屉留下一块尸块。被 6 印上的格子不再参与图案判定。神圣之路开启后 666 变为 999：不没收金币，图案照常结算，尸块照落。</p>" +
         "<h3>🍀 幸运符 / 特性 / 修饰词</h3>" +
-        "<p>商店用券买<b>幸运符</b>（被动 / 随机触发 / ⚡充能三类，详见图鉴）；电话能给符文贴<b>特性</b>（贪婪、野心、执念……）；转盘符号有几率自带<b>修饰词</b>：金色=价值永久上涨、代币=立即得钱、票券、复现=图案多触发一次、电池、锁链、<b>万能</b>=可替代该图案里的任意符号（一条图案里只能有一个非万能符号）。<b>抽屉</b>存符文不占容量，可来回倒腾。连锁系符文（连锁反应/满贯回响/深渊回响/连锁信）会<b>赠送额外旋转</b>，赠送总量每回合有硬上限，不会无限连下去。</p>" +
+        "<p>商店用券买<b>幸运符</b>（被动常驻 / 随机触发 / ⚡消耗能量 / ✦即时生效 <b>四类</b>，详见图鉴图例）；电话能给符文贴<b>特性</b>（贪婪、野心、执念……）；转盘符号有几率自带<b>修饰词</b>：金色=价值永久上涨、代币=立即得钱、票券、复现=图案多触发一次、电池、锁链、<b>万能</b>=可替代该图案里的任意符号（一条图案里只能有一个非万能符号）。<b>抽屉</b>存符文不占容量，可来回倒腾。连锁系符文（连锁反应 / 满贯回响 / 深渊回响 / 连锁信）会<b>赠送额外旋转</b>：每张卡片上写的「每回合上限 N」就是它自己那一路的真实额度，四家合计还受一层每回合赠送总量硬上限约束，所以永远不会无限连下去。<b>同一种幸运符同时只能持有一件</b>，货架上已售出或已拥有的格子会置灰显示「已售出」，不再占着一个不能买的坑。</p>" +
         "<h3>💀 尸块、钥匙与结局</h3>" +
         "<p>集齐 5 块尸块并解锁全部 4 个抽屉后，announcer 会递来钥匙：<b>白钥匙</b>（保持神圣）→ 电梯上升的好结局；<b>暗红钥匙</b>→ 门后无门的坏结局；还不上债 = 坠入深渊。死亡后抽屉遗留会变成下一位「房客」的尸块。</p>" +
-        '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）。空格键 = 拉杆（焦点在按钮上时空格属于那个按钮）；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；点击幸运符看详情/转卖/入抽屉；HUD 的「☎ 通话记录」可以回看你接听、挂断、推迟过的每一通电话（含对方的回应）；「🔊 音效」可以一键静音；弹窗按 Esc 或点关闭即可收起；<b>同一种幸运符同时只能持有一件</b>（不占容量的消耗品会在图鉴里标「可叠加」，买到即生效、不进装备栏）；「放弃本局」计为一次死亡；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁。</p>';
+        '<p class="dim g-tip">💡 小贴士：<b>游戏会自动存档</b>——刷新或关掉页面后，标题页会出现「继续上一局」，从同一期接着打（随机序列也会精确续接）；停在标题页时切后台 / 关页面<b>不会</b>删掉这一局的存档。<b>空格键 = 拉杆，R 键 = 红色按钮</b>（焦点在按钮上时空格属于那个按钮）；<b>手机上没有悬停</b>，点一下带说明的格子 / 按钮就会弹出说明气泡；关键提示（欠转、免费回合、容量已满、666 的来由）会以浮在盘面上方的提示条出现约 2 秒，不必切到日志页去找；点击幸运符看详情/转卖/入抽屉，容量满时抽屉卡片会抖一下告诉你为什么；<b>「结束本期」在还不清债务时会先向你确认</b>——它的真实后果是开始死亡倒计时；HUD 的「通话记录」可以回看你接听、挂断、推迟过的每一通电话（含对方的回应）；静音按钮在 HUD 右侧；弹窗按 Esc 或点关闭即可收起；<b>同一种幸运符同时只能持有一件</b>（不占容量的消耗品会在图鉴里标「可叠加」，买到即生效、不进装备栏）；「放弃本局」计为一次死亡；死亡后抽屉里遗留的符文会变成下一位房客的<b>尚未拥有</b>的那几块残骸；道具图鉴在首页和游戏内 HUD 都能开，遇到的道具才会解锁，未遇到的道具连价格都不公开。</p>';
       // 指南内容 2000+ 字，手机上要滚很久：按 <h3> 分节折叠（首节默认展开）。
       // 不改内容本身，只在渲染后重组 DOM，避免两处文案不同步。
       const gcard = $("guide-card");

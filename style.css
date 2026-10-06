@@ -36,7 +36,11 @@ body {
   letter-spacing: 0.03em;
   min-height: 100vh;
   min-height: 100dvh;   /* 手机地址栏收放时不再跳高 */
+  /* 横向溢出保护。注意必须是 clip 而不是 hidden：`overflow-x:hidden` 会让
+     overflow-y 计算值变成 auto，把 body 变成滚动容器，从而废掉后代元素
+     对「视口」的 position:sticky —— 手机上吸底的拉杆坞正是靠这个。 */
   overflow-x: hidden;
+  overflow-x: clip;
 }
 /* CRT 氛围层 */
 .crt-overlay {
@@ -56,7 +60,9 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 .hidden { display: none !important; }
 .dim { color: var(--dim); }
-.small { font-size: 11px; }
+/* 中文最小字号口径：9–11px 的中文笔画会糊成一团，而这些恰恰是品质/触发方式/
+   容量/能量这类「需要读」的信息，不是装饰。全站正文不低于 11.5px。 */
+.small { font-size: 11.5px; }
 .gold { color: var(--gold); }
 .amber { color: var(--amber); }
 .green { color: var(--green); }
@@ -102,7 +108,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .btn-red { background: #33130e; border-color: #7a2a1a; color: #ff8a70; }
 .btn-red:hover:not(:disabled) { border-color: var(--danger); color: #ffb0a0; }
 .btn-warn { border-color: #7a2a1a; color: #ff8a70; }
-.btn-mini { padding: 4px 9px; font-size: 11px; }
+.btn-mini { padding: 4px 9px; font-size: 11.5px; }
 .btn-lever {
   font-size: 15px; padding: 12px 26px; letter-spacing: 0.35em;
   background: linear-gradient(180deg, #7a5426, #4a3110);
@@ -114,7 +120,14 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 /* ==================== 标题画面 ==================== */
 .title-card { text-align: center; max-width: 560px; }
-.logo-clover { font-size: 52px; filter: drop-shadow(0 0 18px rgba(157,191,46,.6)); }
+/* 标题 logo 与盘面符号同一套双色 SVG + 琥珀外发光。
+   旧版那枚彩色 🍀 emoji 是首屏饱和度最高、体积感最强的元素，压在霓虹标题上方
+   像贴了张贴纸，和 README 里「刻意不用彩色 3D emoji」的声明自相矛盾。 */
+.logo-clover { display: flex; align-items: center; justify-content: center; height: 78px; }
+.logo-clover-svg {
+  width: 72px; height: 72px;
+  filter: drop-shadow(0 0 16px rgba(255,179,71,.5)) drop-shadow(0 0 36px rgba(157,191,46,.35));
+}
 .logo-text {
   font-size: clamp(44px, 9vw, 84px); color: var(--amber); letter-spacing: 0.22em;
   text-shadow: 0 0 24px rgba(255,179,71,.55), 0 0 60px rgba(255,140,40,.25);
@@ -135,7 +148,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   background: rgba(20,16,10,.6);
 }
 .title-buttons { display: flex; gap: 12px; justify-content: center; margin-bottom: 18px; }
-.title-foot { color: var(--amber-dim); font-size: 11px; }
+.title-foot { color: var(--amber-dim); font-size: 11.5px; }
 
 /* ==================== 记忆卡选择 ==================== */
 .cards-wrap { width: 100%; max-width: 900px; text-align: center; }
@@ -153,7 +166,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .mem-card.r-Uncommon { border-color: #5c7a1a; }
 .mc-name { color: var(--amber); font-size: 15px; margin-bottom: 8px; }
 .mc-desc { font-size: 12px; color: var(--text); line-height: 1.6; min-height: 58px; }
-.mc-dlg { font-size: 11px; color: var(--dim); margin-top: 8px; font-style: italic; }
+.mc-dlg { font-size: 11.5px; color: var(--dim); margin-top: 8px; font-style: italic; }
 
 /* ==================== 主游戏布局 ==================== */
 .game-wrap { width: 100%; max-width: 1180px; display: flex; flex-direction: column; gap: 10px; }
@@ -167,8 +180,18 @@ body.evil { animation: evilflash 0.9s ease-out; }
   padding: 2px 10px; border-right: 1px dashed var(--line);
 }
 .hud-cell:last-of-type { border-right: none; }
-.hud-label { font-size: 10px; color: var(--dim); letter-spacing: 0.2em; }
+.hud-label { font-size: 11.5px; color: var(--dim); letter-spacing: 0.08em; }
 .hud-num { font-size: 17px; text-shadow: 0 0 8px rgba(232,185,60,.3); }
+#hud > .btn-mini { display: inline-flex; align-items: center; gap: 5px; }
+/* HUD 里的单色描边图标：跟随按钮文字颜色，静音时切换斜杠 */
+.ui-ico {
+  width: 1.05em; height: 1.05em; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.15em;
+}
+#btn-sound .xmark { display: none; }
+#btn-sound.is-muted .wave { display: none; }
+#btn-sound.is-muted .xmark { display: block; }
 #btn-menu { margin-left: auto; align-self: center; }
 
 .game-main {
@@ -195,7 +218,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
   color: var(--amber); letter-spacing: 0.4em; font-size: 13px;
   text-shadow: 0 0 10px rgba(255,179,71,.5);
 }
-.machine-luck { color: var(--danger); font-size: 11px; }
+/* 机器右上角现在说的是这台机器的事：本转幸运值的构成（符文 / 机器各多少） */
+.machine-luck { color: var(--amber-dim); font-size: 11.5px; text-align: right; max-width: 46%; }
 .slot-grid {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
   background: #0a0806; border: 1px solid var(--line2); border-radius: 6px; padding: 10px;
@@ -248,16 +272,51 @@ body.evil { animation: evilflash 0.9s ease-out; }
 @keyframes glow { from { text-shadow: 0 0 8px rgba(255,210,74,.4); } to { text-shadow: 0 0 22px rgba(255,210,74,.9); } }
 .six-text { color: var(--danger); font-weight: bold; letter-spacing: 0.15em; }
 .holy-text { color: #ffe9a8; text-shadow: 0 0 12px rgba(255,233,168,.6); }
-.luck-line { color: var(--dim); font-size: 11px; }
-.patterns-line { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.luck-line { color: var(--dim); font-size: 11.5px; }
+.patterns-line { color: var(--dim); font-size: 11.5px; margin-top: 2px; }
 .machine-controls { display: flex; gap: 10px; }
 .machine-controls #btn-spin { flex: 1.4; }
 .machine-controls #btn-red { flex: 1; }
+/* 拉杆坞：横幅 + 收支行 + 拉杆，手机上整块吸在视口底部 */
+.machine-dock { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.atm-strip { display: none; }         /* 桌面端 ATM 面板本来就在旁边，只手机上压成横幅 */
+.round-tally { font-size: 11.5px; color: var(--dim); letter-spacing: 0.04em; }
+.round-tally b { color: var(--gold); font-weight: normal; }
+.round-tally .green { color: var(--green); }
+.energy-strip {
+  color: var(--amber); font-size: 11.5px; white-space: nowrap;
+  display: flex; align-items: center; align-self: center;
+}
 .round-controls {
   margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
   min-height: 34px;
 }
 .spin-count { color: var(--dim); font-size: 12px; letter-spacing: 0.1em; }
+/* 红色来电的预告：从机器右上角挪到债务区，位置终于和它说的话对上了 */
+.red-omen {
+  margin: 0 0 8px; padding: 6px 9px; border: 1px dashed #7a2a1a; border-radius: 6px;
+  color: #ff8a70; font-size: 11.5px; background: rgba(42,15,10,.55);
+}
+/* 「结束本期」与存款按钮之间加分隔：小目标 + 高代价不该挤在一起 */
+.atm-sep {
+  flex: none; align-self: stretch; width: 1px; margin: 2px 4px;
+  background: repeating-linear-gradient(180deg, var(--line2) 0 3px, transparent 3px 6px);
+}
+#btn-end-deadline { margin-left: 2px; }
+/* 关键提示浮条：浮在盘面上方约 2 秒（弹窗打开时让位，不挡内容） */
+.feed-toast {
+  position: fixed; z-index: 93; left: 0; top: 0; transform: translate(-50%, -100%);
+  max-width: min(86vw, 420px); padding: 8px 12px; border-radius: 7px;
+  font-size: 12px; line-height: 1.5; text-align: center; pointer-events: none;
+  background: rgba(18,15,11,.96); border: 1px solid var(--amber-dark); color: var(--text);
+  box-shadow: 0 8px 26px rgba(0,0,0,.7); opacity: 0; transition: opacity 0.16s ease;
+}
+.feed-toast.on { opacity: 1; }
+.feed-toast.k-warn { border-color: var(--amber-dim); color: var(--amber); }
+.feed-toast.k-evil { border-color: #7a2a1a; color: #ff8a70; }
+.feed-toast.k-good { border-color: #5c7a1a; color: #cfe08a; }
+.feed-toast.k-holy { border-color: var(--gold); color: #ffe9a8; }
+.feed-toast.k-special { border-color: var(--gold); color: var(--gold); }
 
 /* ==================== ATM ==================== */
 .atm-head {
@@ -272,7 +331,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   box-shadow: inset 0 0 20px rgba(255,150,50,.07);
 }
 .atm-row { display: flex; justify-content: space-between; margin: 3px 0; }
-.atm-row.small { font-size: 11px; }
+.atm-row.small { font-size: 11.5px; }
 .atm-bar {
   height: 8px; background: #1a140c; border-radius: 4px; overflow: hidden; margin: 7px 0 4px;
   border: 1px solid #2c2318;
@@ -302,7 +361,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 /* ==================== 符号/图案/日志板 ==================== */
 .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .tab {
-  flex: 1; padding: 5px 8px; font-size: 11px; font-family: inherit;
+  flex: 1; padding: 5px 8px; font-size: 11.5px; font-family: inherit;
   background: #1c1710; color: var(--dim); border: 1px solid var(--line);
   border-radius: 4px; cursor: pointer; letter-spacing: 0.15em;
 }
@@ -324,18 +383,24 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .sym-prob { color: var(--dim); text-align: right; }
 .sym-bar { height: 5px; background: #161209; border-radius: 3px; overflow: hidden; }
 .sym-bar span { display: block; height: 100%; background: var(--amber-dim); }
+/* 图案板是玩家理解赔付的核心工具，不是装饰：
+   旧版 11px 的点阵把「Λ尖塔 / 天眼 / 大满贯」压到看不出形状，
+   ×倍率又是暗金色、和名字对比度几乎一样。点阵放大到 16px，倍率提到与名字同级。 */
 .pat-row {
-  display: grid; grid-template-columns: 72px 1fr 52px; gap: 8px;
-  align-items: center; font-size: 12px; padding: 5px 2px;
+  display: grid; grid-template-columns: 96px 1fr 64px; gap: 8px;
+  align-items: center; font-size: 13px; padding: 5px 2px;
   border-bottom: 1px dashed #262019;
 }
 .pat-grid {
-  display: grid; grid-template-columns: repeat(5, 11px); grid-auto-rows: 11px; gap: 2px;
+  display: grid; grid-template-columns: repeat(5, 16px); grid-auto-rows: 16px; gap: 2px;
 }
-.pat-grid i { background: #211b13; border-radius: 2px; }
-.pat-grid i.on { background: var(--amber); box-shadow: 0 0 4px rgba(255,179,71,.5); }
+.pat-grid i { background: #1c1710; border: 1px solid #2e2619; border-radius: 2px; }
+.pat-grid i.on {
+  background: var(--amber); border-color: #ffd9a0;
+  box-shadow: 0 0 5px rgba(255,179,71,.6);
+}
 .pat-name { color: var(--text); }
-.pat-mult { color: var(--gold); text-align: right; }
+.pat-mult { color: var(--gold); text-align: right; font-size: 13px; text-shadow: 0 0 8px rgba(232,185,60,.35); }
 .feed-list { max-height: 340px; overflow-y: auto; font-size: 12px; line-height: 1.7; }
 .feed-line { padding: 1px 0; border-bottom: 1px dotted #211b13; color: var(--dim); }
 .k-evil { color: #ff6a55; }
@@ -358,17 +423,17 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .r-Legendary { border-color: var(--gold); box-shadow: 0 0 10px rgba(232,185,60,.22); }
 .cc-name { color: var(--text); font-size: 13px; line-height: 1.3; }
 .r-Legendary .cc-name { color: var(--gold); }
-.cc-trait { font-size: 10px; margin-top: 3px; }
-.cc-flags { font-size: 9px; color: var(--dim); margin-top: 2px; }
+.cc-trait { font-size: 11.5px; margin-top: 3px; }
+.cc-flags { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
 .chg {
   height: 5px; background: #0c0a07; border-radius: 3px; margin-top: 5px; overflow: hidden;
   border: 1px solid #2c2318;
 }
 .chg i { display: block; height: 100%; background: var(--amber); box-shadow: 0 0 5px rgba(255,179,71,.6); }
-.chg-n { font-size: 9px; color: var(--dim); display: block; margin-top: 2px; }
+.chg-n { font-size: 11.5px; color: var(--dim); display: block; margin-top: 2px; }
 .cc-price { color: var(--green); margin-top: 5px; font-size: 12px; }
 .cc-desc {
-  font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.5;
+  font-size: 11.5px; color: var(--dim); margin-top: 4px; line-height: 1.5;
   text-align: left;
   /* 用 line-clamp 代替硬切：旧版 max-height + overflow:hidden 会把文字拦腰截断，
      看起来像渲染 bug；line-clamp 至少给一个省略号。 */
@@ -390,7 +455,13 @@ body.evil { animation: evilflash 0.9s ease-out; }
 /* ==================== 弹窗 ==================== */
 .modal {
   /* 必须盖在 CRT 扫描线(90) / 暗角(91) 之上，否则弹窗内容被叠一层黑、边缘发闷 */
-  position: fixed; inset: 0; background: rgba(5,4,3,.82); z-index: 92;
+  position: fixed; inset: 0; z-index: 92;
+  /* 遮罩压暗提到 .92 并加模糊：旧版 .82 之下 HUD 数字、盘面符号、符文卡名
+     仍然清晰可读，会和弹窗内容抢注意力（880px 宽的图鉴尤其明显）。
+     对 backdrop-filter 不支持的环境由更深的底色兜底。 */
+  background: rgba(4,3,2,.92);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   display: flex; align-items: center; justify-content: center;
   padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
            calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
@@ -417,11 +488,11 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .t-sacred .opt-name { color: #ffe9a8; }
 .t-normal .opt-name { color: var(--amber); }
 .opt-desc { font-size: 12px; color: var(--dim); margin-top: 4px; line-height: 1.55; }
-.opt-rarity { font-size: 10px; color: var(--dim); margin-top: 5px; }
+.opt-rarity { font-size: 11.5px; color: var(--dim); margin-top: 5px; }
 .phone-actions { display: flex; gap: 8px; margin-top: 10px; }
 
 .cd-head { font-size: 17px; margin-bottom: 6px; }
-.cd-sub { font-size: 11px; color: var(--dim); margin-bottom: 10px; }
+.cd-sub { font-size: 11.5px; color: var(--dim); margin-bottom: 10px; }
 .cd-desc { font-size: 13px; line-height: 1.7; margin-bottom: 8px; }
 .cd-trait { font-size: 12px; margin: 8px 0; padding: 8px; border: 1px dashed var(--line2); border-radius: 6px; }
 .cd-chg { font-size: 12px; color: var(--amber); margin: 8px 0; }
@@ -478,13 +549,16 @@ body.evil { animation: evilflash 0.9s ease-out; }
     touch-action: manipulation;                     /* 消除双击缩放延迟 */
   }
   .btn { padding: 11px 16px; }                      /* 指尖友好：放大点击区 */
-  .btn-mini { padding: 8px 12px; min-height: 38px; }
-  .tab { padding: 9px 6px; min-height: 40px; }
-  /* HUD 为了两行紧凑排布不强制最小高度（否则顶栏会被撑高） */
-  #hud > .btn-mini { min-height: 0; }
+  /* 点击区：iOS HIG 建议 44×44、Material 建议 48dp。旧版 38 仍偏小，
+     而「结束本期」（高代价）和存款按钮挤在同一行里，最不该出现的组合。 */
+  .btn-mini { padding: 10px 12px; min-height: 44px; }
+  .tab { padding: 10px 6px; min-height: 44px; }
+  /* HUD 为了两行紧凑排布不强制 44（否则顶栏会被撑高），但也抬到 36 */
+  #hud > .btn-mini { min-height: 36px; }
+  .charm-card, .store-card, .drawer-slot { min-height: 44px; }
   .phone-opt { padding: 12px; }
-  /* 9px 的品质 chip 在手机上基本看不清 */
-  .rarity-chip { font-size: 11px; padding: 4px 6px; }
+  /* 品质改由色块 + 边框表达，文字只做辅助；字号已在全站兜到 11.5px */
+  .rarity-chip { font-size: 11.5px; padding: 4px 6px; }
   /* 触屏没有“悬停”：点按后不要一直保持抬起状态 */
   .mem-card:hover, .charm-card:hover { transform: none; }
 }
@@ -500,10 +574,11 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .small { font-size: 12px; }
 
   /* 标题画面 */
-  .logo-clover { font-size: 44px; }
+  .logo-clover { height: 60px; }
+  .logo-clover-svg { width: 56px; height: 56px; }
   .logo-text { letter-spacing: 0.12em; }            /* 防止 LOGO 溢出小屏 */
   .logo-sub { letter-spacing: 0.5em; text-indent: 0.5em; }
-  .title-meta { padding: 8px 12px; font-size: 11px; }
+  .title-meta { padding: 8px 12px; font-size: 11.5px; }
   .title-buttons { gap: 8px; }
   .title-buttons .btn { padding: 12px 14px; }
 
@@ -520,56 +595,82 @@ body.evil { animation: evilflash 0.9s ease-out; }
     grid-column: span 2; min-width: 0; padding: 2px 2px;
     border-right: none; align-items: center;
   }
-  .hud-label { font-size: 9px; letter-spacing: 0.04em; }
+  .hud-label { font-size: 11.5px; letter-spacing: 0.04em; }
   .hud-num { font-size: 14px; }
   #hud > .btn-mini {
     grid-column: span 3; width: auto; margin: 0;
-    padding: 7px 2px; font-size: 10px; letter-spacing: 0; align-self: stretch;
+    padding: 7px 2px; font-size: 11.5px; letter-spacing: 0; align-self: stretch;
   }
 
-  /* 主布局单列化 */
+  /* 主布局单列化 + 按「每回合要看几次」重排。
+     旧版是桌面三栏直接纵向堆叠：老虎机 → ATM → 符号板 → 幸运符 → 商店，
+     把符号板/日志这类参考资料塞在主循环正中间，390×844 实测整条循环要跨 2.4 屏滚动。
+     现在让 .game-main 交出盒子（display:contents），由 .game-wrap 统一排序：
+     拉杆 → ATM → 幸运符 → 商店/抽屉 → 符号板/图案板/日志。 */
   .game-wrap { gap: 8px; }
-  .game-main { grid-template-columns: 1fr; gap: 8px; }
+  .game-main { display: contents; }
+  /* order 要写在「DOM 里的父级」上（.game-main 的子元素），
+     写在 .game-wrap > .boards-panel 是选不中的——display:contents 只改盒树，不改选择器 */
+  .game-main > .machine-panel { order: 1; }
+  .game-main > .atm-panel { order: 2; }
+  .game-main > .boards-panel { order: 5; }
+  .game-wrap > .charms-panel { order: 3; }
+  .game-wrap > .game-bottom { order: 4; }
 
   /* 老虎机：格子收紧、拉杆按钮加高 */
   .slot-grid { gap: 4px; padding: 6px; }
   .slot-cell { font-size: 24px; }
   .spin-info { min-height: 54px; font-size: 12px; }
-  .machine-controls {
-    gap: 8px;
-    /* 手机上单列后，看商店/抽屉要往下滚，拉杆会滑出视野。
-       修法：用 flex order 把「回合控制」排到拉杆上面，再把拉杆钉在视口底部。
-       这样 sticky 只会盖到已在其上方的元素，不会再挡住开回合的按钮。 */
-    position: sticky; bottom: 0; z-index: 6;
-    padding: 6px 0 4px;
-    background: linear-gradient(180deg, rgba(20, 17, 12, 0), var(--panel) 38%);
+  /* 手机上拉杆会随页面滚出视野：把「ATM 摘要横幅 + 收支小计 + 拉杆」做成一条
+     常驻视口底部的操作栏。注意必须是 fixed 而不是 sticky —— 它是机器面板的最后一个
+     子元素，sticky 的偏移会被 containing block 卡住（实测滚到商店时拉杆跑到 -382px）。 */
+  .machine-dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; gap: 4px;
+    padding: 6px calc(10px + env(safe-area-inset-right))
+             calc(6px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+    background: linear-gradient(180deg, rgba(15, 12, 8, .92), #14110c 44%);
+    border-top: 1px solid var(--line);
   }
+  /* 固定操作栏脱离文档流，末尾要留等高占位，否则滚到底会盖住最后一行商店 / 抽屉 */
+  .game-wrap { padding-bottom: 152px; }
+  .atm-strip {
+    display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between;
+    padding: 6px 8px; border: 1px solid #3a2f1c; border-radius: 6px;
+    background: #0d0b07; color: var(--amber); font-size: 11.5px;
+  }
+  .atm-strip .as-cell b { color: var(--gold); font-weight: normal; }
   .machine-panel { display: flex; flex-direction: column; }
   .machine-panel .machine-head { order: 1; }
   .machine-panel #slot-grid { order: 2; }
   .machine-panel .spin-info { order: 3; }
   .machine-panel #round-controls { order: 4; }
-  .machine-panel .machine-controls { order: 5; }
+  .machine-panel .machine-dock { order: 5; }
+  .machine-controls { gap: 8px; }
   .machine-controls .btn { padding: 14px 10px; }
   .machine-controls #btn-spin { letter-spacing: 0.2em; }
 
   /* 符号板 / 图案板 / 日志：列宽收窄防溢出 */
   .board-list, .feed-list { max-height: 260px; }
-  .feed-list { font-size: 11px; }
-  .sym-row { grid-template-columns: 20px 52px 1fr 40px 54px; gap: 4px; font-size: 11px; }
-  .pat-grid { grid-template-columns: repeat(5, 12px); grid-auto-rows: 12px; }
-  .pat-row { grid-template-columns: 74px 1fr 44px; font-size: 11px; }
+  .feed-list { font-size: 11.5px; }
+  .sym-row { grid-template-columns: 20px 52px 1fr 40px 54px; gap: 4px; font-size: 11.5px; }
+  .pat-grid { grid-template-columns: repeat(5, 15px); grid-auto-rows: 15px; }
+  .pat-row { grid-template-columns: 88px 1fr 52px; font-size: 11.5px; }
 
   /* 幸运符 / 商店 / 抽屉：卡片两列排布 */
   .charm-row { gap: 6px; }
   .charm-card, .store-card { width: calc(50% - 3px); }
   .drawer-slot { width: calc(50% - 3px); }
-  .cc-trait { font-size: 11px; }
+  .cc-trait { font-size: 11.5px; }
   /* 9px 的触发类型/标记在手机上基本看不清 */
-  .cc-type { font-size: 10.5px; padding: 2px 5px; }
-  .cc-flags { font-size: 10px; }
-  .cc-desc { font-size: 11px; -webkit-line-clamp: 4; line-clamp: 4; }
-  .chg-n { font-size: 10px; }
+  .cc-type { font-size: 11.5px; padding: 2px 5px; }
+  .cc-flags { font-size: 11.5px; }
+  .cc-desc { font-size: 11.5px; -webkit-line-clamp: 4; line-clamp: 4; }
+  .chg-n { font-size: 11.5px; }
+
+  /* 固定操作栏里的摘要横幅已经常驻显示债务 / 已存 / 利息 / 666 了，
+     ATM 屏上那四行在手机上就是重复信息，还会把「存款 / 结束本期」按钮挤到操作栏背后 */
+  .atm-screen .atm-row:not(.small) { display: none; }
+  .atm-screen { padding: 7px 9px; }
 
   /* 弹窗：占满宽度，按钮等分 */
   .modal {
@@ -585,7 +686,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   /* 结局 / 指南 */
   .end-card { padding: 22px 16px; }
   .end-text { font-size: 13px; }
-  .end-stats { font-size: 11px; }
+  .end-stats { font-size: 11.5px; }
   .guide-card { padding: 16px 14px; font-size: 12px; }
 }
 
@@ -622,7 +723,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
   background: linear-gradient(225deg, rgba(194, 59, 34, 0.14), transparent 65%);
 }
 .fx-zone-label {
-  position: absolute; top: 64px; font-size: 11px; letter-spacing: 0.2em;
+  position: absolute; top: 64px; font-size: 11.5px; letter-spacing: 0.2em;
   writing-mode: vertical-rl; opacity: 0.75;
 }
 .fx-rich .fx-zone-label { left: 16px; color: var(--gold); }
@@ -677,9 +778,9 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .codex-item.locked { opacity: 0.55; border-style: dashed; }
 .codex-item.locked .cx-name { color: var(--dim); letter-spacing: 0.3em; }
 .cx-name { color: var(--amber); font-size: 13px; }
-.cx-sub { font-size: 10px; color: var(--dim); margin-top: 3px; }
-.cx-desc { font-size: 11px; color: var(--text); margin-top: 5px; line-height: 1.6; }
-.cx-dlg { font-size: 10px; color: var(--dim); margin-top: 5px; font-style: italic; }
+.cx-sub { font-size: 11.5px; color: var(--dim); margin-top: 3px; }
+.cx-desc { font-size: 11.5px; color: var(--text); margin-top: 5px; line-height: 1.6; }
+.cx-dlg { font-size: 11.5px; color: var(--dim); margin-top: 5px; font-style: italic; }
 .codex-hint { margin-top: 10px; }
 
 /* 指南增强（内容变多后可滚动） */
@@ -708,22 +809,22 @@ body.evil { animation: evilflash 0.9s ease-out; }
      保住「左边是钱、右边是死」的空间对立（否则只剩两片模糊渐变）。 */
   .fx-zone-label {
     writing-mode: horizontal-tb; top: auto; bottom: 12px;
-    font-size: 10px; letter-spacing: 0.06em; opacity: 0.8;
+    font-size: 11.5px; letter-spacing: 0.06em; opacity: 0.8;
     max-width: 46vw; white-space: normal; line-height: 1.4;
   }
   .fx-rich .fx-zone-label { left: 8px; }
   .fx-doom .fx-zone-label { right: 8px; text-align: right; }
-  .fx-track { font-size: 11px; }
+  .fx-track { font-size: 11.5px; }
   .codex-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 52vh; max-height: 52dvh; }
   .codex-item { padding: 7px 8px; }
-  .cx-desc { font-size: 11px; }
+  .cx-desc { font-size: 11.5px; }
 }
 /* =========================================================================
  * v3：触屏说明气泡（替代只有悬停生效的 title）/ 阶段横幅
  * ========================================================================= */
 .fx-tip {
   /* 高于弹窗(92)：按钮也走气泡了，弹窗内的按钮（如「等会儿再说」）同样需要看到说明。
-     pointer-events: none 保证它永远不会挡佳何点击；showModal 时主动收起旧气泡。 */
+     pointer-events: none 保证它永远不会挡住任何点击；showModal 时主动收起旧气泡。 */
   position: fixed; z-index: 97; pointer-events: none; opacity: 0;
   padding: 7px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.6;
   background: rgba(18, 15, 11, 0.97); border: 1px solid var(--amber-dark);
@@ -779,7 +880,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 /* —— 品质标识（图鉴 / 商店 / 装备 / 详情共用） —— */
 .rarity-chip {
-  flex: none; font-size: 9px; line-height: 1; padding: 3px 5px; border-radius: 3px;
+  flex: none; font-size: 11.5px; line-height: 1; padding: 3px 5px; border-radius: 3px;
   border: 1px solid var(--line2); color: var(--dim); white-space: nowrap;
 }
 .rarity-chip.r-Common { border-color: #6b6457; color: #b8b0a0; background: #211d16; }
@@ -797,7 +898,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 
 /* —— 触发类型：被动 / 随机 / 耗能 / 即时 一眼可辨 —— */
 .cc-type {
-  font-size: 9px; margin-top: 3px; padding: 1px 4px; border-radius: 3px;
+  font-size: 11.5px; margin-top: 3px; padding: 1px 4px; border-radius: 3px;
   border: 1px solid var(--line2); display: inline-block;
 }
 .tt-passive { color: #9dbf2e; border-color: #5c7a1a; }
@@ -812,15 +913,15 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .codex-legend .lg-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .lg-item {
   flex: 1 1 190px; border: 1px solid var(--line2); border-radius: 6px;
-  padding: 6px 9px; font-size: 10.5px; line-height: 1.5; background: #16120c;
+  padding: 6px 9px; font-size: 11.5px; line-height: 1.5; background: #16120c;
 }
-.lg-item b { display: block; font-size: 11px; margin-bottom: 2px; }
+.lg-item b { display: block; font-size: 11.5px; margin-bottom: 2px; }
 .lg-item span { color: var(--dim); }
 .lg-item.tt-passive b { color: #9dbf2e; }
 .lg-item.tt-random b { color: var(--amber); }
 .lg-item.tt-button b { color: #ff8a70; }
 .lg-item.tt-instant b { color: var(--gold); }
-.lg-rars { margin-top: 7px; font-size: 11px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lg-rars { margin-top: 7px; font-size: 11.5px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* —— 商店：已拥有 —— */
 .store-card.owned { opacity: 0.58; cursor: default; }
@@ -846,13 +947,13 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .calllog-item.t-sacred { border-left-color: var(--gold); }
 .calllog-item.t-normal { border-left-color: var(--amber-dark); }
 .cl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
-.cl-kind { font-size: 10px; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line2); }
+.cl-kind { font-size: 11.5px; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--line2); }
 .cl-kind.ok { color: #a8d24a; border-color: #5c7a1a; }
 .cl-kind.bad { color: #ff6a55; border-color: #7a2a1a; }
 .cl-kind.wait { color: var(--dim); }
 .cl-name { flex: 1; color: var(--amber); font-size: 13px; }
-.cl-when { color: var(--dim); font-size: 10.5px; }
-.cl-desc { font-size: 11px; color: var(--dim); margin-top: 5px; line-height: 1.6; }
+.cl-when { color: var(--dim); font-size: 11.5px; }
+.cl-desc { font-size: 11.5px; color: var(--dim); margin-top: 5px; line-height: 1.6; }
 
 /* —— 一分钱没转：失落的提示演出 —— */
 .fx-miss {
@@ -867,6 +968,8 @@ body.evil { animation: evilflash 0.9s ease-out; }
   /* 补全遗漏：中奖格子弹跳 / 容量满抖动 / 提示气泡过渡 / 浮空与横幅 */
   .slot-cell.hit, .store-deny { animation: none; }
   .fx-tip { transition: none; }
+  /* 提示浮条是「信息」不是「装饰」：去掉淡入淡出，但仍然显示 */
+  .feed-toast { transition: none; }
   .fx-float, .fx-banner, .fx-combo, .fx-miss, .fx-coin-fly { display: none; }
   body.evil { animation: none; }
 }
@@ -902,7 +1005,7 @@ body.evil { animation: evilflash 0.9s ease-out; }
 }
 
 /* 通话记录：对方回一句（data.js 里写了 40 条 resp，以前从未被渲染） */
-.cl-resp { font-size: 11px; color: var(--amber-dim); margin-top: 4px; font-style: italic; }
+.cl-resp { font-size: 11.5px; color: var(--amber-dim); margin-top: 4px; font-style: italic; }
 
 /* 结局屏动作区 */
 .end-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
@@ -937,13 +1040,14 @@ body.evil { animation: evilflash 0.9s ease-out; }
 /* —— 手机横屏：视口只剩 320~430px 高，纵向留白必须让位给内容 —— */
 @media (orientation: landscape) and (max-height: 520px) {
   .screen { justify-content: flex-start; }
-  .logo-clover { font-size: 30px; }
+  .logo-clover { height: 40px; }
+  .logo-clover-svg { width: 38px; height: 38px; }
   .logo-text { font-size: clamp(26px, 5.2vw, 46px); }
   .logo-sub { font-size: 14px; margin: 2px 0 8px; }
   .logo-tag { margin-bottom: 10px; }
   .title-meta { margin-bottom: 10px; padding: 6px 12px; line-height: 1.6; }
   .title-buttons { margin-bottom: 10px; }
-  .title-foot { font-size: 10px; }
+  .title-foot { font-size: 11.5px; }
   .card-grid { margin: 10px 0 12px; }
   .mem-card { padding: 10px 12px; }
   .slot-cell { font-size: 20px; }
@@ -951,6 +1055,55 @@ body.evil { animation: evilflash 0.9s ease-out; }
   .board-list, .feed-list { max-height: 190px; }
   .modal-box { max-height: 92vh; max-height: 92dvh; }
   .guide-card { max-height: 80vh; max-height: 80dvh; }
+
+  /* —— 主操作必须在首屏 ——
+     旧版 844×390 实测拉杆按钮 top=376、视口只有 390 高，主操作键只剩 14px 露在屏外，
+     而横屏恰恰是这类游戏最自然的拿法。三管齐下：
+     ① 盘面格子压扁（每行只占原来一半高）
+     ② ATM 摘要横幅 + 拉杆坞常驻底部
+     ③ ATM 面板与机器并排，回合按钮与拉杆都留在首屏 */
+  .game-main {
+    display: grid; gap: 8px;
+    grid-template-columns: minmax(300px, 1.6fr) minmax(220px, 1fr);
+  }
+  .game-main > .boards-panel { grid-column: 1 / -1; }
+  .game-main > .machine-panel, .game-main > .atm-panel, .game-main > .boards-panel,
+  .game-wrap > .charms-panel, .game-wrap > .game-bottom { order: 0; }
+  .game-wrap { gap: 6px; }
+  .panel { padding: 6px 8px; }
+  .machine-head { margin-bottom: 3px; }
+  /* 矮视口里 HUD 先让路：顶栏压到一行 30px 小按钮 + 13px 数字 */
+  #hud { gap: 2px; padding: 3px 6px; }
+  .hud-cell { padding: 0 2px; }
+  .hud-num { font-size: 13px; }
+  #hud > .btn-mini { min-height: 30px; padding: 4px 2px; }
+  .slot-grid { gap: 3px; padding: 5px; }
+  /* 每行只占原来四成高：整台机器 + 拉杆一起塞进 390px 高的首屏 */
+  .slot-cell { aspect-ratio: 1 / 0.42; font-size: 22px; }
+  .spin-info { min-height: 26px; font-size: 11.5px; margin: 3px 0; }
+  .round-controls { margin-top: 4px; min-height: 28px; }
+  /* 横屏矮视口里，sticky 的偏移量会被 containing block 的高度限制住（实测仍差 16px
+     露在屏外），所以这里改用固定底栏：拉杆 + ATM 摘要永远在视口底部，
+     并在 .game-wrap 末尾留出等高的占位，滚到底也不会被盖住最后一行内容。 */
+  .machine-dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; gap: 3px; margin-top: 4px;
+    padding: 5px calc(10px + env(safe-area-inset-right))
+             calc(5px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+    background: linear-gradient(180deg, rgba(15,12,8,.9), #14110c 46%);
+    border-top: 1px solid var(--line);
+  }
+  .game-wrap { padding-bottom: 128px; }
+  .machine-controls { gap: 6px; }
+  .machine-controls .btn { padding: 8px 10px; }
+  .atm-strip {
+    display: flex; flex-wrap: wrap; gap: 3px 10px; justify-content: space-between;
+    padding: 5px 8px; border: 1px solid #3a2f1c; border-radius: 6px;
+    background: #0d0b07; color: var(--amber); font-size: 11.5px;
+  }
+  .atm-panel { padding: 8px 10px; }
+  .atm-screen { padding: 7px 9px; }
+  .atm-screen .atm-row:not(.small) { display: none; }
+  .charm-row { min-height: 76px; }
 }
 
 /* —— 超宽桌面（≥1500px）：面板跟着放大，两侧不留大片空 —— */
@@ -966,3 +1119,24 @@ body.evil { animation: evilflash 0.9s ease-out; }
 .board-list, .feed-list, .codex-grid, .calllog-body, .modal-box, .guide-card {
   overscroll-behavior: contain;
 }
+
+/* =========================================================================
+ * v7：本轮整改新增组件 / 货架死格 / 结局发卡
+ * ========================================================================= */
+
+/* 结局发的记忆卡（指南一直写着「靠记忆包交易和结局来收集」） */
+.end-card-get {
+  color: var(--amber); font-size: 12.5px; margin-bottom: 12px; line-height: 1.8;
+  border: 1px dashed var(--amber-dark); border-radius: 8px; padding: 8px 12px;
+  background: rgba(30, 22, 12, .5);
+}
+
+/* 货架上已售出 / 已拥有的格子：置灰 + 明确不可买（旧版还能点，点了才在日志里报错） */
+.store-card.owned { opacity: 0.5; cursor: not-allowed; }
+.store-card.owned .cc-name,
+.store-card.owned .cc-desc { color: var(--dim); }
+.store-card.owned:hover { transform: none; border-color: var(--line2); }
+
+/* 图鉴图例 / 通话记录 / 拉杆坞里的强调文字统一收在 11.5px 以上 */
+.energy-strip b { color: var(--gold); font-weight: normal; }
+.atm-strip .as-cell { white-space: nowrap; }

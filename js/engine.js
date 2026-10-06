@@ -51,7 +51,6 @@
       symMult: 1 + (st.symMultAdd || 0), patMult: 1 + (st.patMultAdd || 0),
       interestAdd: 0, interestMult: 1,
       luckBase: 0,
-      weightBonus: {}, weightHalves: {},
       modChance: { golden: {}, token: {}, ticket: {}, repetition: {}, battery: {}, chain: {}, wild: {} },
       modAny: { golden: 0, token: 0, ticket: 0, repetition: 0, battery: 0, chain: 0, wild: 0 },
       // 记忆卡修正：直接算进初始值，而不是等符文钩子跑完再整体覆盖。
@@ -86,7 +85,8 @@
     fx(st, "derived", d);
     // 容量保底：任何叠加（牺牲/沙漏/核按钮/扩音器）之后都不能降到 0 以下
     d.charmSpace = Math.max(1, d.charmSpace);
-    d.interest = Math.max(0, (CP.BASE_INTEREST + d.interestAdd + (st.interestBonus || 0)) * d.interestMult);
+    d.interest = Math.max(0, (CP.BASE_INTEREST + d.interestAdd +
+      (st.interestBonus || 0) + (st.limboInterest || 0)) * d.interestMult);
     st._d = d;
     st._dDirty = false;
     return d;
@@ -122,6 +122,9 @@
       weightHalves: Object.fromEntries(CP.SYMBOLS.map((s) => [s.id, 0])),
       permWeightBonus: Object.fromEntries(CP.SYMBOLS.map((s) => [s.id, 0])),
       interestBonus: 0,
+      // 「灵薄狱」的利息加成是**临时**的（卡片写「至期末」），单独一个字段，
+      // 每份开始由 startDeadline 清零；st.interestBonus 是记忆卡「新的投资」的永久加成。
+      limboInterest: 0,
       baseCharmSpace: CP.BASE_CHARM_SPACE,
       charmSpaceBonus: 0,
       // 幸运符
@@ -152,6 +155,7 @@
       bookShadowsStreak: 3,
       // 回合/期统计
       roundEarnings: 0,
+      roundCost: 0,        // 本回合已花掉的金币（拉杆 + 补货），UI 的「收支小计」用
       roundLost666: 0,
       stats: { spins: 0, jackpots: 0, patterns: 0, biggest: 0, sixes: 0, holy: 0, deposited: 0, restocks: 0, purchases: 0, rerolls: 0, discarded: 0, freeSpins: 0, wilds: 0 },
       // 尸块/钥匙/结局
@@ -189,9 +193,11 @@
     if (c === "expensive") { st.tickets = 4; }
     if (c === "sacrifices") { /* derived */ }
     if (c === "dunce") {
-      const ids = CP.SYMBOLS.map((s) => s.id);
-      for (let i = 0; i < 2; i++) {
-        const id = pick(st.rng, ids);
+      // 无放回抽 2 个：旧写法用有放回抽样（pick 两次），13% 的开局会抽中同一个符号，
+      // 结果是「减半 2 种」的文案实际只减半 1 种。
+      const pool = CP.SYMBOLS.map((s) => s.id);
+      for (let i = 0; i < 2 && pool.length; i++) {
+        const id = pool.splice(Math.floor(st.rng() * pool.length), 1)[0];
         st.weightHalves[id] += 1;
       }
     }
@@ -220,6 +226,7 @@
     st.storeRestockUses = 0;
     st.storeDiscountTemp = 0;
     st.round = 0;
+    st.limboInterest = 0;   // 灵薄狱的「利息 +10%（至期末）」到此真的到期作废
     st.sixCells = [];
     st.board = Array(15).fill(null);
     st.phone.pending = false;
@@ -257,15 +264,17 @@
         if (!st.cadaver[p]) continue;
         const slot = st.drawers.findIndex((x, i) => i < st.drawersUnlocked && !x);
         if (slot >= 0 && CP.CharmFx) {
-          st.drawers[slot] = CP.CharmFx.makeInstance(st, CP.CharmFx.randomCharmId(st, { noCadaver: true }), true);
+          st.drawers[slot] = CP.CharmFx.makeInstance(st, CP.CharmFx.randomCharmId(st, { noCadaver: true }));
           spawned++;
         }
       }
       if (spawned) E.addFeed(st, `骷髅在抽屉里生成了 ${spawned} 件免费符文`);
     }
-    // 记忆包提议
+    // 记忆包提议：门槛从「2 个抽屉」降到「1 个抽屉」。
+    // 旧口径（drawersUnlocked >= 2 = 第 6 期以后）叠上「一次性超额还清」，
+    // 让玩家可能连打三局都见不到第 2 张记忆卡，而指南明确承诺记忆卡可以收集。
     st.packOffer = null;
-    if (st.drawersUnlocked >= 2 && st.coins >= st.debt - st.deposited) {
+    if (st.drawersUnlocked >= 1 && st.coins >= st.debt - st.deposited) {
       st.packOffer = { count: st.packsTaken + 1 };
     }
     st.phase = "roundSetup";
@@ -304,6 +313,22 @@
     return true;
   };
 
+  /* 结局发卡：指南承诺记忆卡「靠记忆包交易和结局来收集」，但旧实现只有 acceptPack
+   * 会往 meta.cards 里推 —— 三条结局一张卡都不发，收集口实际是半闭的。
+   * 现在任一结局（含死亡）至少发 1 张未持有的随机卡，全收集完则返回 null。 */
+  E.awardEndingCard = function (st) {
+    const m = st.meta;
+    if (!m || !CP.CharmFx || !CP.CharmFx.randomCardId) return null;
+    const id = CP.CharmFx.randomCardId(st);
+    if (!id) return null;
+    if (!m.cards) m.cards = ["erased"];
+    if (m.cards.indexOf(id) < 0) {
+      m.cards.push(id);
+      return CP.MEMORY_CARD_BY_ID[id] ? CP.MEMORY_CARD_BY_ID[id].name : id;
+    }
+    return null;
+  };
+
   /* =============== 回合(Round)流程 =============== */
   E.startRound = function (st, mode) {
     // mode: 'most' | 'fewer'
@@ -311,6 +336,7 @@
     st.roundMode = mode;
     st.roundSpinNum = 0;
     st.roundEarnings = 0;
+    st.roundCost = 0;
     st.roundLost666 = 0;
     st.sixCells = [];
     st.flags.forcedJackpot = st.flags.nextRoundJackpot || false;
@@ -322,6 +348,7 @@
     st.flags.charmTriggersThisRound = 0;
     // 连锁系：赠送旋转的每回合额度（E.grantFreeSpins 的硬上限用）
     st.flags.freeSpinsGrantedThisRound = 0;
+    st.flags.freeSpinsBySource = {};   // 单一来源额度也是每回合清零
     st.flags.freeSpinsThisRound = 0;
     st.bookShadowsStreak = 3;
     // 上回合选了「等会儿再说」的电话：本回合重新响铃（选项重掷）。
@@ -362,6 +389,7 @@
       E.addFeed(st, "身无分文——免费回合（仅奖励1张券）", "warn");
     }
     if (!free) st.coins -= cost;
+    st.roundCost = free ? 0 : cost;
     st.spinsPerRound = spins + d.extraSpins;
     st.spinsLeft = st.spinsPerRound;
     st.freeRound = free;
@@ -570,8 +598,8 @@
     if (res.scored.length === 0) st.consecutiveLosses += 1;
     else st.consecutiveLosses = 0;
 
-    // D4：30% 重掷未入图案的符号（仅视觉/修饰，不再计分）
-    // （简化：不做）
+    // D4「重掷未入图案的符号」由 charms.js 的 d4 符文在 spinEnd 钩子里实现（改 st.board），
+    // 不在这里做二次重掷 —— 否则一次旋转会被重掷两遍。
 
     st.spinsLeft -= 1;
     const spinResult = {
@@ -583,6 +611,8 @@
     if (st.spinsLeft <= 0) st.phase = "roundEnd";
     // 旋转是「先结算、后播动画」：动画途中刷新页面时，状态已变但 lastSpin 丢了，
     // 高亮与结果文字会和盘面对不上。存一份可序列化的摘要，续档时重建。
+    // events 有意留空：符文触发明细只在「当次旋转」的日志里出现（一次性播报），
+    // 续档后盘面高亮与赔付金额仍完整重建，只丢掉那几行文字，不影响任何状态。
     st.lastSpinData = {
       board: board.slice(), boardMods: boardMods.slice(),
       scored: res.scored, payout, jackpot: res.jackpot,
@@ -600,6 +630,18 @@
     if (st.cardId === "recovery") p *= 2;
     return Math.min(p, CP.P666_CAP);
   };
+
+  /* 666 / 999 之后往抽屉里落一块残骸（残骸未满 5 块时才落） */
+  function awardCorpsePiece(st) {
+    if (E.corpseCount(st) >= 5) return null;
+    const missing = ["armL", "armR", "legL", "legR"].filter((p) => !st.cadaver[p]);
+    if (!missing.length) return null;
+    const piece = pick(st.rng, missing);
+    st.cadaver[piece] = true;
+    E.addFeed(st, "抽屉里出现了一块残骸……", "evil");
+    E.checkCadaverComplete(st);
+    return piece;
+  }
 
   E.rollSix = function (st) {
     const p666 = E.currentP666(st);
@@ -651,6 +693,12 @@
       st.stats.holy += 1;
       E.addFeed(st, "999 神圣图案显现！", "holy");
       if (!st.redTaken) { st.phone.sacredReady = true; }
+      // 神圣化只免除「没收金币」这一层惩罚，残骸照样落下 ——
+      // 旧实现里 666 一旦全被 999 顶替，尸块就永远凑不齐 5 块，
+      // 钥匙提议与整条结局链只对「接过红色来电」的玩家开放，
+      // 而白钥匙（神圣 + 未接红色）反而是唯一走不通的那条。
+      // 也让 _probe/endgame_sim.js 的 holy 路线从「靠运气」变成确定可达。
+      awardCorpsePiece(st);
       return out;
     }
     if (kind === "666") {
@@ -671,15 +719,7 @@
         E.addFeed(st, `666！！失去持有的全部 ${CP.fmt(removed)} 金币`, "evil");
       }
       // 尸块入抽屉
-      if (E.corpseCount(st) < 5) {
-        const missing = ["armL", "armR", "legL", "legR"].filter((p) => !st.cadaver[p]);
-        if (missing.length) {
-          const piece = pick(st.rng, missing);
-          st.cadaver[piece] = true;
-          E.addFeed(st, "抽屉里出现了一块残骸……", "evil");
-          E.checkCadaverComplete(st);
-        }
-      }
+      awardCorpsePiece(st);
       // 下期红色来电
       st.flags.redNext = true;
       // Book of Shadows 连击
@@ -697,17 +737,33 @@
   /* =============== 赠送旋转（免费旋转 / 连锁奖励） ===============
    * 数值口径见 data.js 的「免费旋转 / 连锁奖励的期望值口径」注释：
    *   单次触发的期望总次数 E = n / (1 − B)（B = 再触发分支因子）
-   * 这里额外加「每回合赠送总量硬上限」，保证任何连锁配置都不会发散。
+   * 这里额外加两层闸门，保证任何连锁配置都不会发散：
+   *   ① 单一来源每回合额度（调用方按卡片文案传 perLabelCap，见 CP.CHAIN_SPIN_CAPS）
+   *   ② 每回合赠送总量硬上限（FREE_SPIN_ROUND_CAP）
    * 连锁系符文（charms.js）统一走这里，不自己直接改 spinsLeft。 */
-  E.grantFreeSpins = function (st, n, label) {
+  E.grantFreeSpins = function (st, n, label, perLabelCap) {
     n = Math.floor(n || 0);
     if (n <= 0) return 0;
     const cap = CP.FREE_SPIN_ROUND_CAP || 60;
     const used = st.flags.freeSpinsGrantedThisRound || 0;
-    const add = Math.min(n, Math.max(0, cap - used));
+    let add = Math.min(n, Math.max(0, cap - used));
+    // 第①层闸门：单一来源的每回合额度（与各符文卡片上的「每回合上限 N」一致）。
+    // 没有这个参数时只受总量硬上限约束。
+    if (label && perLabelCap != null) {
+      const bySrc = st.flags.freeSpinsBySource || (st.flags.freeSpinsBySource = {});
+      add = Math.min(add, Math.max(0, perLabelCap - (bySrc[label] || 0)));
+    }
     if (add <= 0) {
-      E.addFeed(st, "赠送旋转已达本回合上限", "warn");
+      if (label && perLabelCap != null && (st.flags.freeSpinsBySource || {})[label] >= perLabelCap) {
+        E.addFeed(st, label + "：已达本回合 " + perLabelCap + " 次上限", "warn");
+      } else {
+        E.addFeed(st, "赠送旋转已达本回合上限", "warn");
+      }
       return 0;
+    }
+    if (label && perLabelCap != null) {
+      const bySrc = st.flags.freeSpinsBySource || (st.flags.freeSpinsBySource = {});
+      bySrc[label] = (bySrc[label] || 0) + add;
     }
     st.flags.freeSpinsGrantedThisRound = used + add;
     st.flags.freeSpinsThisRound = (st.flags.freeSpinsThisRound || 0) + add;
@@ -803,7 +859,10 @@
       // 破损计算器：35% 全体+1
       if (st.flags.brokenCalcThisSpin) triggers += 1;
       const patVal = st.patValues[p.id] || PB[p.id];
-      const per = Math.floor(symSum * (d.symMult) * patVal * (d.patMult));
+      // 符号赔付补偿（见 data.js CP.SYM_RTP_COMP）：官方权重/价值下幸运7 的
+      // per_symbol_RTP 只有 0.525，是七种符号里最低、但价值最高的一档。
+      const comp = (CP.SYM_RTP_COMP && CP.SYM_RTP_COMP[sym]) || 1;
+      const per = Math.floor(symSum * (d.symMult) * patVal * (d.patMult) * comp);
       const payout = per * triggers;
       results.push({ id: p.id, name: CP.PATTERN_NAMES[p.id], symbol: sym, cells: p.cells.slice(), triggers, per, payout, patVal, symSum });
       if (p.id === "JACKPOT") jackpot = true;
@@ -907,7 +966,7 @@
       for (let i = 0; i < st.drawersUnlocked; i++) {
         if (st.drawers[i]) {
           const id = CP.CharmFx.randomCharmId(st, {});
-          st.drawers[i] = CP.CharmFx.makeInstance(st, id, true);
+          st.drawers[i] = CP.CharmFx.makeInstance(st, id);
         }
       }
       out.events.push({ type: "d20", text: "D20：抽屉符文已全部更换" });
@@ -937,9 +996,10 @@
       E.completeDeadline(st, skipped);
       return { paid: true };
     }
-    // 本期一回合都还没打：不允许直接结算。新一期 round = 0、deposited = 0，
-    // 手滑点一下就会立刻重新进入死亡倒计时（死亡倒计时存活后的那一期最容易踩）。
-    if (st.round === 0 && st.deadline > 1) {
+    // 本期一回合都还没打：不允许直接结算。**不分期数**——旧条件带 `st.deadline > 1`，
+    // 偏偏放过了第 1 期：新开局点「结束本期」= 直接进死亡倒计时，
+    // 而第 1 期正是新玩家最容易手滑的时候（按钮文案还写着无害的「结束本期」）。
+    if (st.round === 0) {
       return { paid: false, blocked: true };
     }
     // 死亡倒计时
@@ -951,7 +1011,7 @@
 
   E.completeDeadline = function (st, skippedRounds) {
     const d = E.derived(st);
-    const out = { bonus: 0, tickets: 0, skipped: skippedRounds, keyOffer: false, drawerKey: -1, packOffer: false, events: [] };
+    const out = { bonus: 0, tickets: 0, skipped: skippedRounds, keyOffer: false, drawerKey: -1, events: [] };
     // 期末奖励
     out.bonus = CP.DEADLINE_BONUS_MULT * st.deadline;
     st.coins += out.bonus;
@@ -1088,17 +1148,24 @@
       cost = Math.ceil(st.baseRestockCost * Math.pow(CP.RESTOCK_GROWTH, st.storeRestockUses));
     }
     if (!isFree && st.coins < cost) return { ok: false, cost, reason: "coins" };
-    if (!isFree) { st.coins -= cost; st.storeRestockUses += 1; st.stats.restocks += 1; }
+    if (!isFree) { st.coins -= cost; st.storeRestockUses += 1; st.stats.restocks += 1; st.roundCost = (st.roundCost || 0) + cost; }
     const slots = st.cardId === "desperate" ? 3 : CP.STORE_SLOTS;
-    const first = st.store.length === 0 && st.deadline === 1 && st.round === 0;
+    // 「开局基础池」只在本局第一次铺货架时生效。旧条件用 store.length === 0 判定，
+    // 于是第 1 期把货架买空之后再补货，仍会被当成开局池 —— 低价刷基础符文的漏洞。
+    const first = !st.flags.openingShelfDone && st.deadline === 1 && st.round === 0;
+    if (first) st.flags.openingShelfDone = true;
     st.store = [];
+    // 同一张货架不允许出现重复 id。旧实现只过滤「已装备 / 抽屉里已有」，
+    // 不记录「本次货架已经出过谁」，实测 1500 次补货里 5.7% 撞出同名两件，
+    // 买走一件后剩下一件变成「已拥有 · 不可重复」的死格，白吃掉 1/4 个货架位。
+    const onShelf = new Set();
     for (let i = 0; i < slots; i++) {
-      const id = CP.CharmFx ? CP.CharmFx.randomCharmId(st, { basicOnly: first }) : null;
+      const id = CP.CharmFx ? CP.CharmFx.randomCharmId(st, { basicOnly: first, exclude: onShelf }) : null;
       if (!id) break;
-      const entry = { id, trait: null, free: false };
-      if (st.cardId === "expensive" || st.flags.storeTraits) {
-        if (st.rng() < 0.08) entry.trait = pick(st.rng, Object.keys(CP.TRAITS));
-      }
+      onShelf.add(id);
+      const entry = { id, trait: null, free: false, sold: false };
+      // 「昂贵的爱」卡片写的是「商店符文**全部**自带随机特性」，按文案实现（旧实现是 8% 概率）
+      if (st.cardId === "expensive") entry.trait = pick(st.rng, Object.keys(CP.TRAITS));
       st.store.push(entry);
     }
     st.storeDiscountTemp = 0;
@@ -1132,26 +1199,56 @@
     return (st.drawers || []).some((c) => c && c.id === id);
   };
 
+  /* 已占用的符文容量（noSpace 类不占位）。容量判定只有这一处口径，
+   * 商店购买 / 抽屉取出 / 电话与符文直接入栏三条路径共用，避免再各写一份而漏掉检查。 */
+  E.charmSpaceUsed = function (st) {
+    return (st.charms || []).filter((c) => {
+      const cd = CP.CHARMS[c.id];
+      return !cd || !cd.noSpace;
+    }).length;
+  };
+  E.canEquipMore = function (st) {
+    return E.charmSpaceUsed(st) < E.derived(st).charmSpace;
+  };
+
+  /* 把一件符文放进装备栏；容量满时退化成「收进抽屉」，抽屉也满则只生效不入栏。
+   * 电话（神圣符文）与「深渊巨口」这类要往栏里塞东西的路径必须走这里 ——
+   * 旧实现直接 st.charms.push()，HUD 会出现「8 / 7」的越界容量。 */
+  E.equipCharm = function (st, inst, why) {
+    const def = CP.CHARMS[inst.id];
+    if (E.charmSpaceUsed(st) < E.derived(st).charmSpace) {
+      st.charms.push(inst); touch(st); return "board";
+    }
+    const slot = st.drawers.findIndex((x, i) => i < st.drawersUnlocked && !x);
+    if (slot >= 0) {
+      st.drawers[slot] = inst;
+      touch(st);
+      E.addFeed(st, "符文容量已满——" + (def ? def.name : inst.name) + " 先进了抽屉 #" + (slot + 1), "warn");
+      return "drawer";
+    }
+    touch(st);
+    E.addFeed(st, "符文容量已满、抽屉也放不下——" + (why || "效果已结算") + "，不入栏", "warn");
+    return "none";
+  };
+
   E.buyCharm = function (st, slot) {
     const entry = st.store[slot];
     if (!entry) return { ok: false, reason: "empty" };
+    if (entry.sold) return { ok: false, reason: "sold" };
     const def = CP.CHARMS && CP.CHARMS[entry.id];
     if (!def) return { ok: false, reason: "noDef" };
     if (!def.stackable && E.ownsCharm(st, entry.id)) return { ok: false, reason: "owned" };
     const price = E.charmPrice(st, entry);
     if (st.tickets < price) return { ok: false, reason: "tickets", price };
-    const d = E.derived(st);
     if (!def.noSpace) {
-      const used = st.charms.filter((c) => {
-        const cd = CP.CHARMS[c.id];
-        return !cd || !cd.noSpace;
-      }).length;
-      if (used >= d.charmSpace) return { ok: false, reason: "space", price };
+      if (!E.canEquipMore(st)) return { ok: false, reason: "space", price };
     }
     st.tickets -= price;
     st.stats.purchases += 1;
-    st.store.splice(slot, 1); // 先移出货架：instant 类符文（幸运饼干）会整架换新
-    const inst = CP.CharmFx.makeInstance(st, entry.id, false, entry.trait);
+    // 货架标记为「已售出」而不是把格子抽掉：抽掉会让后面的卡片前移补位，
+    // 而旧实现补上来的可能是同一件符文 —— 玩家买到手的其实是「已售出」的死格。
+    entry.sold = true;
+    const inst = CP.CharmFx.makeInstance(st, entry.id, entry.trait);
     // instant 类在 makeInstance 里就已结算完毕：绝不能进装备栏——
     // 否则会永久占格、卡片长期挂在栏里，还能半价反复转卖薅券。
     const instant = def.trigger === "instant";
@@ -1160,7 +1257,7 @@
     if (entry.id === "cigarettes") {
       st.flags.cigPrice = (st.flags.cigPrice || 0) + 1;
       E.restockStore(st, true, true, true);
-      st.store.unshift({ id: "cigarettes", trait: null, free: false });
+      st.store.unshift({ id: "cigarettes", trait: null, free: false, sold: false });
     }
     fx(st, "purchase", { charm: inst, def, price });
     if (def.cadaver) {
@@ -1169,6 +1266,18 @@
     }
     touch(st);
     return { ok: true, charm: inst, price, instant };
+  };
+
+  /* 转卖价值：全项目唯一口径。
+   * 旧版有三套算法各写各的（discardCharm / openCharm 的 sellGain / charms.js 的
+   * resellValue），`ceil` 的位置不同，同一件符文在「详情里显示的价钱」和
+   * 「实际到手的券」会对不上。这里以真正发给玩家的那一套为准。 */
+  E.charmResell = function (c) {
+    const def = CP.CHARMS[c.id];
+    if (!def) return 0;
+    let v = Math.ceil((def.cost + (c.trait && CP.TRAITS[c.trait] ? CP.TRAITS[c.trait].cost : 0)) / 2);
+    if (c.id === "sardines") v *= 2;
+    return Math.max(0, v);
   };
 
   E.discardCharm = function (st, uid, sell = true) {
@@ -1181,8 +1290,7 @@
     st.stats.discarded += 1;
     let gain = 0;
     if (sell && def) {
-      gain = Math.ceil((def.cost + (c.trait ? CP.TRAITS[c.trait].cost : 0)) / 2);
-      if (c.id === "sardines") gain *= 2;
+      gain = E.charmResell(c);
       st.tickets += gain;
     }
     fx(st, "discard", { charm: c, def, gain });
@@ -1203,13 +1311,8 @@
   E.fromDrawer = function (st, slot) {
     const c = st.drawers[slot];
     if (!c) return false;
-    const d = E.derived(st);
     const def = CP.CHARMS[c.id];
-    const used = st.charms.filter((x) => {
-      const cd = CP.CHARMS[x.id];
-      return !cd || !cd.noSpace;
-    }).length;
-    if ((!def || !def.noSpace) && used >= d.charmSpace) return false;
+    if ((!def || !def.noSpace) && !E.canEquipMore(st)) return false;
     st.charms.push(c);
     st.drawers[slot] = null;
     touch(st);
@@ -1219,16 +1322,20 @@
   /* =============== 电话 =============== */
   E.rollPhoneOptions = function (st) {
     const n = 3 + (st.charms.some((c) => c.id === "dear_diary") ? 1 : 0);
-    let pool;
     const ban = st.flags.bannedCallId || null;
-    const sacred = st.phone.sacredReady && !st.redTaken;
-    if (sacred) {
-      pool = CP.PHONE_CALLS.filter((c) => c.type === "sacred" && !(c.once && st.phone.usedOnce[c.id]) && c.id !== ban);
-      st.sacredMode = true;
-    } else if (st.phone.redForced) {
+    const notUsed = (c) => !(c.once && st.phone.usedOnce[c.id]) && c.id !== ban;
+    const sacredOpen = st.phone.sacredReady && !st.redTaken;
+    let pool;
+    if (st.phone.redForced) {
+      // 强制红色来电的期数（3 / 7 / 上一转踩过 666）优先，玩家必须当面做这个选择
       pool = CP.PHONE_CALLS.filter((c) => c.type === "red" && c.id !== ban);
+    } else if (sacredOpen) {
+      // 神圣之路开启后是「神圣池 + 普通池混合抽取」。
+      // 旧实现只从 8 张神圣卡里抽，而 sacredReady 一旦置 true 就永不复位 ——
+      // 结果是之后的电话池永远只剩神圣卡，普通来电从游戏里彻底消失。
+      pool = CP.PHONE_CALLS.filter((c) => (c.type === "sacred" || c.type === "normal") && notUsed(c));
     } else {
-      pool = CP.PHONE_CALLS.filter((c) => c.type === "normal" && !(c.once && st.phone.usedOnce[c.id]) && c.id !== ban);
+      pool = CP.PHONE_CALLS.filter((c) => c.type === "normal" && notUsed(c));
     }
     const weights = { Common: 50, Uncommon: 30, Rare: 14, Legendary: 6 };
     const opts = [];
@@ -1274,7 +1381,7 @@
         deadline: st.deadline, round: st.round });
       st.phone.pending = false;
       st.phone.options = [];
-      E.addFeed(st, "你挂断了阴冷的电流声……（拒绝红色来电 " + st.sacredRejections + "/3）", "holy");
+      E.addFeed(st, "你挂断了阴冷的电流声……（累计挂断红色来电 " + st.sacredRejections + "/3）", "holy");
       if (st.sacredRejections >= 3) E.addFeed(st, "一种温暖的力量开始注视着你——神圣之路已开。", "holy");
       return { ok: true, kind: "rejected", count: st.sacredRejections, resp: rc.resp || null };
     }
@@ -1309,14 +1416,14 @@
     fx(st, "phonePick", { call });
     const d = E.derived(st);
     let times = 1 + d.phoneExtraTrigger + (st.cardId === "firstlove" ? 1 : 0);
-    for (let t = 0; t < times; t++) E.applyPhoneCall(st, call, t > 0);
+    for (let t = 0; t < times; t++) E.applyPhoneCall(st, call);
     st.phone.pending = false;
     st.phone.options = [];
     touch(st);
     return { call, times };
   };
 
-  E.applyPhoneCall = function (st, call, echo) {
+  E.applyPhoneCall = function (st, call) {
     const rng = st.rng;
     const d = E.derived(st);
     const symBoost = (id, n) => { st.permWeightBonus[id] += n; };
@@ -1324,7 +1431,7 @@
     const halveWeight = (ids) => { for (const i of ids) st.weightHalves[i] += 1; };
     switch (call.id) {
       case "stuff_away": st.charmSpaceBonus += 1; break;
-      case "cant_quit": st.patValues.JACKPOT = (st.patValues.JACKPOT || 10) * 2; break;
+      case "cant_quit": st.patValues.JACKPOT = (st.patValues.JACKPOT || PB.JACKPOT) * 2; break;
       case "borrow_green": st.tickets += 5; break;
       case "eat_something": st.storeDiscountTemp = 2; break;
       case "energy_drinks": for (const c of st.charms) { const def = CP.CHARMS[c.id]; if (def && def.button) c.charges = def.charges; } break;
@@ -1362,7 +1469,7 @@
       }
       case "head_hurts": {
         const others = st.phone.options.filter((x) => x !== call.id).map((x) => CP.PHONE_CALL_BY_ID[x]);
-        for (const oc of others) E.applyPhoneCall(st, oc, true);
+        for (const oc of others) E.applyPhoneCall(st, oc);
         addTrait(st, "devious"); break;
       }
       case "money_back": st.coins *= 2; st.tickets = 0; break;
@@ -1382,9 +1489,10 @@
       case "help": {
         if (CP.CharmFx) {
           const id = CP.CharmFx.randomSacredId(st);
-          const inst = CP.CharmFx.makeInstance(st, id, false, null);
-          st.charms.push(inst);
-          E.addFeed(st, `神圣符文降临：${CP.CHARMS[id].name}`, "holy");
+          const inst = CP.CharmFx.makeInstance(st, id);
+          // 旧实现直接 push，容量 7 时能把 HUD 顶成「8 / 7」
+          const where = E.equipCharm(st, inst, "神圣符文已降临但没能入栏");
+          if (where !== "none") E.addFeed(st, `神圣符文降临：${CP.CHARMS[id].name}`, "holy");
         }
         st.coins = Math.floor(st.coins / 2); break;
       }
@@ -1437,7 +1545,9 @@
         // 逐件转成残骸，而不是无脑取前 N 块。骷髅若已在盘面上则一并延续。
         const pieces = [];
         if (st.cadaver.skull) pieces.push("skull");
-        const limbs = ["armL", "armR", "legL", "legR"];
+        // 只从「本局还没拿到的部件」里补：旧写法恒定从 armL 起按顺序取，
+        // 于是已经拿到左臂+右臂的玩家下局继承的还是这两块（等于白拿），腿永远继承不到。
+        const limbs = ["armL", "armR", "legL", "legR"].filter((p) => !st.cadaver[p]);
         for (let i = 0; i < carry.length && i < limbs.length; i++) pieces.push(limbs[i]);
         st.meta.corpseCarry = pieces.length ? pieces : null;
       }

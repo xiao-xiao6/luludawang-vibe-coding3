@@ -8,6 +8,9 @@
 <meta name="color-scheme" content="dark" />
 <meta name="description" content="四叶草深渊 · CloverPit 非官方同人复刻 —— rogue-lite 老虎机噩梦，为你的性命下注" />
 <title>四叶草深渊 · CloverPit Fan Game</title>
+<!-- 站点图标：内联 SVG 双色四叶草。声明 rel=icon 后浏览器不会再默认去请求 /favicon.ico -->
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="alternate icon" href="favicon.ico" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -23,7 +26,8 @@
   </div>
   <div class="fx-marquee" aria-hidden="true"><div class="fx-track" id="fx-track"></div></div>
   <div class="title-card">
-    <div class="logo-clover">🍀</div>
+    <!-- logo 与盘面符号同一套双色 SVG（图标源在 app.js 的 ICON_PATHS.clover，渲染时注入） -->
+    <div class="logo-clover" id="logo-clover" aria-hidden="true"></div>
     <h1 class="logo-text">CLOVER&nbsp;PIT</h1>
     <div class="logo-sub">四 叶 草 深 渊</div>
     <p class="logo-tag">rogue-lite 老虎机噩梦 · 为你的性命下注</p>
@@ -57,9 +61,17 @@
       <div class="hud-cell"><span class="hud-label">回合</span><span id="hud-round" class="hud-num">0/3</span></div>
       <div class="hud-cell"><span class="hud-label">旋转</span><span id="hud-spins" class="hud-num amber">—</span></div>
       <div class="hud-cell"><span class="hud-label">幸运</span><span id="hud-luck" class="hud-num amber">—</span></div>
-      <button type="button" id="btn-calllog" class="btn btn-mini">☎ 通话记录</button>
-      <button type="button" id="btn-codex-game" class="btn btn-mini">📖 图鉴</button>
-      <button type="button" id="btn-sound" class="btn btn-mini">🔊 音效</button>
+      <!-- HUD 图标统一为单色描边 SVG（currentColor 跟随按钮文字色），
+           不再用彩色 emoji —— 和盘面那套双色符号保持一致 -->
+      <button type="button" id="btn-calllog" class="btn btn-mini" data-tip="回看你接听、挂断、推迟过的每一通电话，含对方的回应台词">
+        <svg class="ui-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.6 4h2.9l1.4 3.6-2 1.4a13 13 0 0 0 5.7 5.7l1.4-2L19.6 14v2.9c0 .9-.8 1.6-1.7 1.5-7.4-.7-13-6.3-13.7-13.7C4.1 4.8 4.8 4 5.7 4z"/></svg>
+        <span class="btn-label">通话记录</span></button>
+      <button type="button" id="btn-codex-game" class="btn btn-mini" data-tip="道具图鉴：遇到过的幸运符与记忆卡才会解锁">
+        <svg class="ui-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 6.6C10.1 5.2 7.3 4.6 4.8 4.8v13c2.5-.2 5.3.4 7.2 1.8 1.9-1.4 4.7-2 7.2-1.8v-13c-2.5-.2-5.3.4-7.2 1.8z"/><path d="M12 6.6v13"/></svg>
+        <span class="btn-label">图鉴</span></button>
+      <button type="button" id="btn-sound" class="btn btn-mini" aria-pressed="false" data-tip="一键静音（全部音效由 WebAudio 实时合成，不加载音频文件）">
+        <svg class="ui-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9.5h3l4.5-4v13L7 14.5H4z"/><path class="wave" d="M15 9.8a4 4 0 0 1 0 4.4"/><path class="xmark" d="M16.6 9.6l4.8 4.8M21.4 9.6l-4.8 4.8"/></svg>
+        <span class="btn-label">音效</span></button>
       <button type="button" id="btn-menu" class="btn btn-mini">放弃本局</button>
     </header>
 
@@ -72,16 +84,26 @@
         </div>
         <div id="slot-grid" class="slot-grid"></div>
         <div id="spin-info" class="spin-info" role="status" aria-live="polite"><div class="dim">拉下拉杆，开始旋转……</div></div>
-        <div class="machine-controls">
-          <button type="button" id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
-          <button type="button" id="btn-red" class="btn btn-red" title="消耗⚡能量：立即触发所有充能型幸运符（能量每回合结算时自动回复）">◉ 红色按钮</button>
-        </div>
         <div id="round-controls" class="round-controls"></div>
+        <!-- 拉杆坞：手机上把「每回合都要看的数字」压成一条横幅贴在拉杆正上方，
+             不用再跨 2.4 屏来回滚；能量总量也挪到这里，配合 R 键连按 -->
+        <div class="machine-dock">
+          <div id="atm-strip" class="atm-strip"></div>
+          <div id="round-tally" class="round-tally"></div>
+          <div class="machine-controls">
+            <button type="button" id="btn-spin" class="btn btn-lever">拉 下 拉 杆</button>
+            <button type="button" id="btn-red" class="btn btn-red" title="消耗⚡能量：立即触发所有充能型幸运符（能量每回合结算时自动回复）· 键盘可按 R 键">◉ 红色按钮</button>
+            <span id="energy-strip" class="energy-strip"></span>
+          </div>
+        </div>
       </div>
 
       <!-- ATM -->
       <div class="panel atm-panel">
         <div class="atm-head" id="atm-head">DEADLINE #1</div>
+        <!-- 红色来电的预告原本挂在机器右上角（#machine-luck），语义完全错位：
+             玩家看到机器冒「6 的气息」只会以为机器被诅咒。挪到 ATM/债务区才说得上话。 -->
+        <div id="red-omen" class="red-omen hidden" role="status" aria-live="polite"></div>
         <div class="atm-screen">
           <div class="atm-row"><span>债 务</span><span id="atm-debt" class="gold">75</span></div>
           <div class="atm-row"><span>已存入</span><span id="atm-dep" class="amber">0</span></div>
@@ -94,7 +116,8 @@
           <button type="button" class="btn btn-mini dep" data-f="0.25">存入 25%</button>
           <button type="button" class="btn btn-mini dep" data-f="0.5">存入 50%</button>
           <button type="button" class="btn btn-mini dep dep-max" data-f="1">全部存入</button>
-          <button type="button" id="btn-end-deadline" class="btn btn-mini btn-warn" title="自动把身上金币存入ATM并结算本期">结束本期</button>
+          <span class="atm-sep" aria-hidden="true"></span>
+          <button type="button" id="btn-end-deadline" class="btn btn-mini btn-warn" title="自动把身上金币存入ATM并结算本期；还清不了就会立即开始死亡倒计时（会先向你确认）">结束本期</button>
         </div>
         <div id="countdown-banner" class="countdown hidden"></div>
         <div id="pack-banner" class="pack hidden"></div>
@@ -142,6 +165,10 @@
     </div>
   </div>
 </section>
+
+<!-- 关键提示浮条：欠转 / 免费回合 / 容量已满 / 666 的来由……
+     这些过去只写进默认不显示的日志页，玩家看不见就等于没写 -->
+<div id="feed-toast" class="feed-toast" role="status" aria-live="assertive"></div>
 
 <!-- ==================== 电话弹窗 ==================== -->
 <div id="modal-phone" class="modal hidden" role="dialog" aria-modal="true" aria-label="来电">
